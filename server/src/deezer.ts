@@ -3,6 +3,80 @@ import type { Song } from './types.js';
 
 const DEEZER_API = 'https://api.deezer.com';
 
+// Mapeo de géneros a artistas clave 100% confiables para búsqueda pura
+const GENRE_ARTISTS: { [key: string]: string[] } = {
+  'reggae': ['Bob Marley', 'Peter Tosh', 'Burning Spear', 'Jimmy Cliff', 'Steel Pulse', 'Black Uhuru', 'Bunny Wailer', 'Gregory Isaacs', 'Dennis Brown', 'Toots and the Maytals'],
+  'reggaeton': ['Daddy Yankee', 'Don Omar', 'Bad Bunny', 'J Balvin', 'Wisin y Yandel', 'Arcángel', 'Farruko', 'Anitta', 'Jhay Cortez', 'Ozuna'],
+  'punk': ['The Ramones', 'Sex Pistols', 'The Clash', 'Dead Kennedys', 'Black Flag', 'Minor Threat', 'The Damned', 'Buzzcocks', 'Joy Division', 'Descendents'],
+  'hip-hop': ['Tupac', 'The Notorious B.I.G', 'Nas', 'Jay-Z', 'Eminem', 'Dr. Dre', 'Rakim', 'KRS-One', 'Run-D.M.C', 'LL Cool J'],
+  'hip hop': ['Tupac', 'The Notorious B.I.G', 'Nas', 'Jay-Z', 'Eminem', 'Dr. Dre', 'Rakim', 'KRS-One', 'Run-D.M.C', 'LL Cool J'],
+  'rap': ['Tupac', 'The Notorious B.I.G', 'Nas', 'Jay-Z', 'Eminem', 'Dr. Dre', 'Rakim', 'KRS-One', 'Run-D.M.C', 'LL Cool J'],
+  'rock': ['The Beatles', 'The Rolling Stones', 'Led Zeppelin', 'Pink Floyd', 'David Bowie', 'The Who', 'AC/DC', 'Metallica', 'Aerosmith', 'Guns N\' Roses'],
+  'pop': ['Michael Jackson', 'Madonna', 'Britney Spears', 'The Weeknd', 'Ariana Grande', 'Taylor Swift', 'Lady Gaga', 'Beyoncé', 'Drake', 'Billie Eilish'],
+  'jazz': ['Miles Davis', 'John Coltrane', 'Ella Fitzgerald', 'Duke Ellington', 'Charlie Parker', 'Billie Holiday', 'Thelonious Monk', 'Louis Armstrong', 'Oscar Peterson', 'Herbie Hancock'],
+  'blues': ['B.B. King', 'Muddy Waters', 'Howlin\' Wolf', 'Bessie Smith', 'Robert Johnson', 'John Lee Hooker', 'Albert King', 'Etta James', 'Buddy Guy', 'Willie Dixon'],
+  'k-pop': ['BTS', 'BLACKPINK', 'EXO', 'Stray Kids', 'TWICE', 'Red Velvet', 'iKON', 'Seventeen', 'Girl\'s Generation', 'Super Junior'],
+  'r&b': ['Usher', 'R. Kelly', 'Boyz II Men', 'TLC', 'Aaliyah', 'Outkast', 'Ne-Yo', 'Mary J. Blige', 'Erykah Badu', 'Bryson Tiller'],
+  'electronic': ['Daft Punk', 'The Chemical Brothers', 'Aphex Twin', 'Fatboy Slim', 'Moby', 'Deadmau5', 'Skrillex', 'David Guetta', 'Avicii', 'Tiësto'],
+  'dance': ['Daft Punk', 'Fatboy Slim', 'David Guetta', 'Calvin Harris', 'Diplo', 'Avicii', 'Tiësto', 'Deadmau5', 'The Chemical Brothers', 'Hardwell'],
+  'edm': ['Daft Punk', 'David Guetta', 'Avicii', 'Tiësto', 'Deadmau5', 'Hardwell', 'Diplo', 'Zedd', 'Calvin Harris', 'Martin Garrix'],
+  'indie': ['The Strokes', 'Arctic Monkeys', 'Arcade Fire', 'The National', 'Interpol', 'Vampire Weekend', 'Foster the People', 'Cold War Kids', 'Phoenix', 'Two Door Cinema Club'],
+  'alternative': ['Nirvana', 'Pearl Jam', 'Soundgarden', 'The Smashing Pumpkins', 'Stone Temple Pilots', 'Alice in Chains', 'Faith No More', 'Rage Against the Machine', 'Pixies', 'Sonic Youth'],
+  'country': ['Johnny Cash', 'Willie Nelson', 'Dolly Parton', 'Hank Williams', 'George Strait', 'Waylon Jennings', 'Merle Haggard', 'Patsy Cline', 'Buck Owens', 'Loretta Lynn'],
+  'classical': ['Ludwig van Beethoven', 'Wolfgang Amadeus Mozart', 'Johan Sebastian Bach', 'Pyotr Ilyich Tchaikovsky', 'George Friedrich Handel', 'Antonio Vivaldi', 'Gioachino Rossini', 'Giuseppe Verdi', 'Richard Wagner', 'Claude Debussy'],
+  'metal': ['Black Sabbath', 'Iron Maiden', 'Judas Priest', 'Slayer', 'Pantera', 'Lamb of God', 'Gojira', 'Opeth', 'Meshuggah', 'Korn'],
+  'folk': ['Bob Dylan', 'Joan Baez', 'Joni Mitchell', 'Leonard Cohen', 'Paul Simon', 'Woody Guthrie', 'Peter, Paul and Mary', 'The Lumineers', 'Mumford & Sons', 'Fleet Foxes'],
+  'soul': ['Aretha Franklin', 'Sam Cooke', 'Marvin Gaye', 'Otis Redding', 'Ray Charles', 'Nina Simone', 'Wilson Pickett', 'Solomon Burke', 'Mavis Staples', 'Alicia Keys'],
+  'disco': ['Bee Gees', 'Donna Summer', 'KC and the Sunshine Band', 'Gloria Gaynor', 'Barry White', 'Earth, Wind & Fire', 'Sister Sledge', 'The Trammps', 'Village People', 'Chic'],
+  'funk': ['James Brown', 'Parliament-Funkadelic', 'Earth, Wind & Fire', 'Stevie Wonder', 'Prince', 'Zapp & Roger', 'Roger Troutman', 'Herbie Hancock', 'Grandmaster Flash', 'The Time'],
+  'salsa': ['Celia Cruz', 'Willie Colón', 'Héctor Lavoe', 'Oscar D\'León', 'Rubén Blades', 'Ismael Miranda', 'Ray Barretto', 'Tito Puente', 'Eddie Santiago', 'Joe Arroyo'],
+  'vallenato': ['Carlos Vives', 'Juan Luis Guerra', 'Diomedes Díaz', 'Silvio Brito', 'Yeison Jiménez', 'Binomio de Oro', 'Jorge Celedón', 'Felipe Peláez', 'Peter Manjarrés', 'Grupo Sueño'],
+  'bachata': ['Juan Luis Guerra', 'Aventura', 'Romeo Santos', 'Antony Santos', 'Xtreme', 'Monchy & Alexandra', 'Grupo Manía', 'Hector Acosta', 'Los Ilegales', 'Prince Royce'],
+  'cumbia': ['Grupo Aeromusical', 'Los Graduados', 'Sonora Dinamita', 'Guaco', 'Grupo Bahía', 'La Hipoteca', 'Fulanito', 'Grupo Galé', 'Mamboril', 'El Binomio de Oro'],
+  'merengue': ['Juan Luis Guerra', 'Oro Sólido', 'Sergio Vargas', 'Los Ilegales', 'Grupo Manía', 'Eddy Herrera', 'Fulanito', 'Tecnomacumbé', 'Los Cuervos', 'Kinito Méndez'],
+  'tango': ['Carlos Gardel', 'Astor Piazzolla', 'Julio Sosa', 'Roberto Goyeneche', 'Carlos Di Sarli', 'Juan d\'Arienzo', 'Osvaldo Pugliese', 'Leopoldo Federmann', 'Gino Matteo', 'Adriana Varela'],
+  'grunge': ['Nirvana', 'Pearl Jam', 'Soundgarden', 'Alice in Chains', 'Stone Temple Pilots', 'Mudhoney', 'Screaming Trees', 'Melvins', 'Tad', 'Green River'],
+  'ska': ['The Specials', 'Madness', 'The Selecter', '2 Tone', 'Sublime', 'Reel Big Fish', 'Less Than Jake', 'Streetlight Lemonade', 'The Clash', 'The Police'],
+  'gospel': ['Mahalia Jackson', 'Elvis Presley', 'Yolanda Adams', 'Kirk Franklin', 'Shirley Caesar', 'Al Green', 'Sam Cooke', 'Aretha Franklin', 'Tye Tribbett', 'CeCe Winans'],
+  'bluegrass': ['Bill Monroe', 'Earl Scruggs', 'Lester Flatt', 'Bluegrass Boys', 'Old and in the Way', 'The Osborne Brothers', 'Ricky Skaggs', 'Tony Rice', 'Norman Blake', 'David Grisman'],
+  'house': ['Daft Punk', 'Disclosure', 'Eric Prydz', 'Adam Beyer', 'Carl Cox', 'Richie Hawtin', 'Trance', 'Charlotte de Witte', 'Pan-Pot', 'Amelie Lens'],
+  'techno': ['Richie Hawtin', 'Adam Beyer', 'Amelie Lens', 'Charlotte de Witte', 'Carl Cox', 'Loco Dice', 'Jeff Mills', 'Underground Resistance', 'Surgeon', 'Robert Hood'],
+  'soundtrack': ['Hans Zimmer', 'John Williams', 'Danny Elfman', 'Michael Giacchino', 'Alan Menken', 'Koji Kondo', 'Nobuo Uematsu', 'Yoko Shimomura', 'Austin Wintory', 'Clint Mansell'],
+};
+
+// Mapeo de géneros a IDs de Deezer (solo como referencia, no se usa)
+
+// Mapeo de géneros a términos de búsqueda (solo como fallback)
+const GENRE_SEARCH_TERMS: { [key: string]: string[] } = {
+  'reggae': ['reggae music', 'bob marley', 'wailers', 'reggae classic', 'roots reggae'],
+  'reggaeton': ['reggaeton', 'perreo', 'dembow', 'reggaeton latino', 'reggaeton hits'],
+  'salsa': ['salsa music', 'salsa cubana', 'salsa dance', 'salsa hits', 'orchestras salsa'],
+  'vallenato': ['vallenato', 'carlos vives', 'juan luis guerra', 'cumbia vallenato', 'accordion'],
+  'bachata': ['bachata', 'juan luis guerra', 'aventura', 'bachata dominicana', 'bachata hits'],
+  'cumbia': ['cumbia music', 'cumbia colombiana', 'cumbia tradicional', 'cumbia hits', 'cumbia dance'],
+  'merengue': ['merengue', 'juan luis guerra', 'merengue dominicano', 'merengue hits', 'merengue dance'],
+  'tango': ['tango music', 'carlos gardel', 'tango argentino', 'tango hits', 'tango dancing'],
+};
+
+// Función helper para obtener términos de búsqueda para un género (fallback)
+function getSearchTerms(genre: string): string[] {
+  const genreKey = genre.toLowerCase();
+  
+  // Si existe un mapeo específico, usarlo
+  if (GENRE_SEARCH_TERMS[genreKey]) {
+    return GENRE_SEARCH_TERMS[genreKey];
+  }
+  
+  // Si no, generar términos automáticos
+  return [
+    genre,
+    `${genre} hits`,
+    `${genre} music`,
+    `best ${genre}`,
+    `top ${genre}`
+  ];
+}
+
 export async function searchByArtist(artistName: string, limit: number = 50): Promise<Song[]> {
   try {
     console.log(`Searching Deezer for artist: ${artistName}`);
@@ -57,31 +131,78 @@ export async function searchByGenre(genre: string, limit: number = 50): Promise<
   try {
     console.log(`Searching Deezer for genre: ${genre}`);
     
-    const response = await axios.get(`${DEEZER_API}/search`, {
-      params: {
-        q: `genre:"${genre}"`,
-        limit: limit
-      }
-    });
+    const genreKey = genre.toLowerCase();
+    let allTracks: Song[] = [];
 
-    if (!response.data.data || response.data.data.length === 0) {
-      console.log('No tracks found for genre');
+    // Obtener artistas clave para este género (solo de GENRE_ARTISTS)
+    const genreArtists = GENRE_ARTISTS[genreKey];
+    
+    if (!genreArtists || genreArtists.length === 0) {
+      console.log(`No artists found for genre: ${genre}`);
       return [];
     }
 
-    const tracks = response.data.data
-      .filter((track: any) => track.preview)
-      .map((track: any) => ({
-        id: track.id.toString(),
-        name: track.title,
-        artist: track.artist.name,
-        previewUrl: track.preview,
-        albumArt: track.album.cover_big || track.album.cover_medium || track.album.cover,
-        spotifyUrl: track.link,
-      }));
+    console.log(`Found ${genreArtists.length} key artists for ${genre}`);
 
-    console.log(`Found ${tracks.length} tracks for genre ${genre}`);
-    return tracks;
+    // Para cada artista, obtener sus TOP canciones
+    for (const artistName of genreArtists) {
+      if (allTracks.length >= limit) break;
+
+      try {
+        // Paso 1: Buscar el ID del artista
+        const artistSearchResponse = await axios.get(`${DEEZER_API}/search/artist`, {
+          params: {
+            q: artistName,
+            limit: 1
+          }
+        });
+
+        if (!artistSearchResponse.data.data || artistSearchResponse.data.data.length === 0) {
+          console.log(`Artist not found: ${artistName}`);
+          continue;
+        }
+
+        const artist = artistSearchResponse.data.data[0];
+        console.log(`Found artist: ${artist.name} (searching for "${artistName}")`);
+
+        // Paso 2: Obtener las TOP canciones de este artista
+        const topTracksResponse = await axios.get(`${DEEZER_API}/artist/${artist.id}/top`, {
+          params: { limit: Math.ceil(limit / Math.max(genreArtists.length, 5)) }
+        });
+
+        if (!topTracksResponse.data.data || topTracksResponse.data.data.length === 0) {
+          console.log(`No top tracks found for artist: ${artist.name}`);
+          continue;
+        }
+
+        // Procesar las canciones
+        const tracks = topTracksResponse.data.data
+          .filter((track: any) => track.preview) // Solo con preview
+          .map((track: any) => ({
+            id: track.id.toString(),
+            name: track.title,
+            artist: track.artist.name,
+            previewUrl: track.preview,
+            albumArt: track.album.cover_big || track.album.cover_medium || track.album.cover,
+            spotifyUrl: track.link,
+          }));
+
+        console.log(`Added ${tracks.length} tracks from ${artist.name}`);
+        allTracks.push(...tracks);
+
+      } catch (e) {
+        console.error(`Error fetching artist "${artistName}":`, e);
+        continue;
+      }
+    }
+
+    if (allTracks.length === 0) {
+      console.log(`No tracks found for genre: ${genre}`);
+      return [];
+    }
+
+    console.log(`Found ${allTracks.length} total tracks for ${genre}, returning ${Math.min(allTracks.length, limit)}`);
+    return allTracks.slice(0, limit);
   } catch (error) {
     console.error('Error in searchByGenre:', error);
     return [];
@@ -92,17 +213,44 @@ export async function searchByYear(year: number, limit: number = 50): Promise<So
   try {
     console.log(`Searching Deezer for year: ${year}`);
     
-    // Buscar hits del año específico
-    const response = await axios.get(`${DEEZER_API}/search`, {
+    // Buscar canciones lanzadas en ese año usando búsqueda general
+    // Deezer no tiene un endpoint específico para años como para géneros
+    // Usamos búsqueda por término y filtramos manualmente
+    const response = await axios.get(`${DEEZER_API}/search/track`, {
       params: {
-        q: `${year}`,
-        limit: limit
+        q: `year:${year}`,
+        limit: limit * 2 // Obtener más resultados para filtrar
       }
     });
 
     if (!response.data.data || response.data.data.length === 0) {
-      console.log('No tracks found for year');
-      return [];
+      console.log(`No tracks found for year ${year}, trying alternative search`);
+      
+      // Fallback: buscar con queries populares del año
+      const fallbackQuery = `hits ${year}`;
+      const fallbackResponse = await axios.get(`${DEEZER_API}/search/track`, {
+        params: {
+          q: fallbackQuery,
+          limit: limit
+        }
+      });
+
+      if (!fallbackResponse.data.data) {
+        return [];
+      }
+
+      const tracks = fallbackResponse.data.data
+        .filter((track: any) => track.preview)
+        .map((track: any) => ({
+          id: track.id.toString(),
+          name: track.title,
+          artist: track.artist.name,
+          previewUrl: track.preview,
+          albumArt: track.album.cover_big || track.album.cover_medium || track.album.cover,
+          spotifyUrl: track.link,
+        }));
+
+      return tracks.slice(0, limit);
     }
 
     const tracks = response.data.data
@@ -117,7 +265,7 @@ export async function searchByYear(year: number, limit: number = 50): Promise<So
       }));
 
     console.log(`Found ${tracks.length} tracks for year ${year}`);
-    return tracks;
+    return tracks.slice(0, limit);
   } catch (error) {
     console.error('Error in searchByYear:', error);
     return [];
@@ -127,17 +275,18 @@ export async function searchByYear(year: number, limit: number = 50): Promise<So
 export async function searchByDecade(startYear: number, endYear: number, limit: number = 50): Promise<Song[]> {
   try {
     const decade = `${Math.floor(startYear / 10) * 10}s`;
-    console.log(`Searching Deezer for decade: ${decade}`);
+    console.log(`Searching Deezer for decade: ${decade} (${startYear}-${endYear})`);
     
-    const response = await axios.get(`${DEEZER_API}/search`, {
+    // Buscar canciones de la década utilizando búsqueda de track
+    const response = await axios.get(`${DEEZER_API}/search/track`, {
       params: {
         q: decade,
-        limit: limit
+        limit: limit * 2 // Obtener más para filtrar
       }
     });
 
     if (!response.data.data || response.data.data.length === 0) {
-      console.log('No tracks found for decade');
+      console.log(`No tracks found for decade: ${decade}`);
       return [];
     }
 
@@ -153,7 +302,7 @@ export async function searchByDecade(startYear: number, endYear: number, limit: 
       }));
 
     console.log(`Found ${tracks.length} tracks for decade ${decade}`);
-    return tracks;
+    return tracks.slice(0, limit);
   } catch (error) {
     console.error('Error in searchByDecade:', error);
     return [];
@@ -239,15 +388,6 @@ function defaultTopArtists(): Array<{name: string; image: string}> {
   ];
 }
 
-export async function getTopGenres(limit: number = 20): Promise<string[]> {
-  const genres = [
-    'pop', 'rock', 'hip-hop', 'r&b', 'electronic', 'indie', 'country', 'latin',
-    'reggaeton', 'jazz', 'blues', 'classical', 'metal', 'punk', 'folk',
-    'soul', 'disco', 'funk', 'reggae', 'k-pop'
-  ];
-  return genres.slice(0, limit);
-}
-
 export async function searchArtists(query: string, limit: number = 10): Promise<Array<{name: string; image: string}>> {
   if (!query || query.length < 2) return [];
   
@@ -270,15 +410,25 @@ export async function searchArtists(query: string, limit: number = 10): Promise<
   }
 }
 
+export async function getTopGenres(limit: number = 20): Promise<string[]> {
+  // Obtener solo los géneros que están en GENRE_ARTISTS
+  const genres = Object.keys(GENRE_ARTISTS);
+  console.log(`Returning ${Math.min(genres.length, limit)} genres from GENRE_ARTISTS`);
+  return genres.slice(0, limit);
+}
+
 export async function searchGenres(query: string): Promise<string[]> {
-  const allGenres = [
-    'pop', 'rock', 'hip-hop', 'r&b', 'electronic', 'indie', 'country', 'latin',
-    'reggaeton', 'jazz', 'blues', 'classical', 'metal', 'punk', 'folk',
-    'soul', 'disco', 'funk', 'reggae', 'k-pop', 'rap', 'house', 'techno',
-    'dance', 'edm', 'alternative', 'grunge', 'ska', 'gospel', 'bluegrass'
-  ];
+  // Buscar géneros solo en GENRE_ARTISTS
+  if (!query || query.length < 1) {
+    return getTopGenres(30);
+  }
+
+  console.log(`Searching genres for query: ${query}`);
   
-  if (!query) return allGenres.slice(0, 20);
+  // Filtrar géneros según la búsqueda
+  const genres = Object.keys(GENRE_ARTISTS)
+    .filter((g: string) => g.includes(query.toLowerCase()));
   
-  return allGenres.filter(g => g.toLowerCase().includes(query.toLowerCase()));
+  console.log(`Found ${genres.length} genres matching "${query}"`);
+  return genres;
 }
