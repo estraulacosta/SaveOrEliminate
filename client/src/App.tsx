@@ -73,11 +73,14 @@ function App() {
       setRoom(updatedRoom);
     });
 
-    socket.on('game-started', ({ round, totalRounds: total, currentYear, selectionType }: { round: Round; totalRounds: number; currentYear?: number; selectionType?: string }) => {
+    socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
       if (currentYear !== undefined) {
         setGameConfig(prev => ({ ...prev, currentYear }));
+      }
+      if (currentDecade !== undefined) {
+        setGameConfig(prev => ({ ...prev, currentDecade }));
       }
       if (selectionType !== undefined) {
         setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
@@ -101,11 +104,14 @@ function App() {
       setVotes(newVotes);
     });
 
-    socket.on('new-round', ({ round, totalRounds: total, currentYear, selectionType }: { round: Round; totalRounds: number; currentYear?: number; selectionType?: string }) => {
+    socket.on('new-round', ({ round, totalRounds: total, currentYear, currentDecade, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
       if (currentYear !== undefined) {
         setGameConfig(prev => ({ ...prev, currentYear }));
+      }
+      if (currentDecade !== undefined) {
+        setGameConfig(prev => ({ ...prev, currentDecade }));
       }
       if (selectionType !== undefined) {
         setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
@@ -273,7 +279,8 @@ function App() {
           isHost={isHost}
           gameMode={gameConfig.mode!}
           selectionType={gameConfig.selectionType}
-          currentYear={gameConfig.currentYear}
+          currentYear={gameConfig.currentYear as number | undefined}
+          currentDecade={gameConfig.currentDecade as number | undefined}
           onTimerEnd={() => navigateTo('vote-results')}
         />;
 
