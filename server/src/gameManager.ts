@@ -198,7 +198,7 @@ export async function generateRound(roomId: string): Promise<Round | null> {
   const room = rooms.get(roomId);
   if (!room || !room.gameConfig) return null;
   
-  const { songsPerRound, selectionType, yearRange } = room.gameConfig;
+  const { songsPerRound, selectionType, yearRange, decadeRange } = room.gameConfig;
   const roundNumber = room.currentRound ? room.currentRound.roundNumber + 1 : 1;
   
   let availableSongs: Song[];
@@ -213,7 +213,19 @@ export async function generateRound(roomId: string): Promise<Round | null> {
     console.log(`[Ronda ${roundNumber}] Fetching songs for year ${currentYear}...`);
     availableSongs = await deezer.searchByYear(currentYear, 100);
     console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for year ${currentYear}`);
-  } else {
+  } 
+  // Para decade mode, obtener SOLO las canciones de la década actual de esa ronda
+  else if (selectionType === 'decade' && decadeRange) {
+    const currentDecade = decadeRange.start + (roundNumber - 1) * 10;
+    if (currentDecade > decadeRange.end) {
+      console.log(`End of decade range. Current decade ${currentDecade} exceeds end ${decadeRange.end}`);
+      return null; // Ya pasamos el rango de décadas
+    }
+    console.log(`[Ronda ${roundNumber}] Fetching songs for decade ${currentDecade}s...`);
+    availableSongs = await deezer.searchByDecade(currentDecade, currentDecade + 9, 100);
+    console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for decade ${currentDecade}s`);
+  }
+  else {
     // Para otros modos, usar las canciones pre-cargadas
     availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
   }

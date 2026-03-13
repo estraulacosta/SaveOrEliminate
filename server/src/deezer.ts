@@ -343,34 +343,50 @@ export async function searchByYear(year: number, limit: number = 100): Promise<S
 export async function searchByDecade(startYear: number, endYear: number, limit: number = 50): Promise<Song[]> {
   try {
     const decade = `${Math.floor(startYear / 10) * 10}s`;
-    console.log(`Searching Deezer for decade: ${decade} (${startYear}-${endYear})`);
+    console.log(`Searching Deezer for decade: ${decade} (years ${startYear}-${endYear})`);
     
-    // Buscar canciones de la década utilizando búsqueda de track
-    const response = await axios.get(`${DEEZER_API}/search/track`, {
-      params: {
-        q: decade,
-        limit: limit * 2 // Obtener más para filtrar
+    const allSongs: Song[] = [];
+    
+    // Obtener canciones de cada año en la década
+    for (let year = startYear; year <= endYear; year++) {
+      const yearPlaylistId = yearPlaylistMap[year];
+      
+      if (!yearPlaylistId) {
+        console.log(`No playlist found for year ${year}`);
+        continue;
       }
-    });
-
-    if (!response.data.data || response.data.data.length === 0) {
-      console.log(`No tracks found for decade: ${decade}`);
-      return [];
+      
+      try {
+        const response = await axios.get(`${DEEZER_API}/playlist/${yearPlaylistId}/tracks`, {
+          params: { limit: limit }
+        });
+        
+        if (response.data.data && response.data.data.length > 0) {
+          const yearTracks = response.data.data
+            .filter((track: any) => track.preview)
+            .map((track: any) => ({
+              id: track.id.toString(),
+              name: track.title,
+              artist: track.artist.name,
+              previewUrl: track.preview,
+              albumArt:
+                track.album?.cover_big ||
+                track.album?.cover_medium ||
+                track.album?.cover ||
+                '',
+              spotifyUrl: track.link,
+            }));
+          
+          allSongs.push(...yearTracks);
+          console.log(`Found ${yearTracks.length} songs from year ${year}`);
+        }
+      } catch (e) {
+        console.error(`Error fetching playlist for year ${year}:`, (e as any).message);
+      }
     }
-
-    const tracks = response.data.data
-      .filter((track: any) => track.preview)
-      .map((track: any) => ({
-        id: track.id.toString(),
-        name: track.title,
-        artist: track.artist.name,
-        previewUrl: track.preview,
-        albumArt: track.album.cover_big || track.album.cover_medium || track.album.cover,
-        spotifyUrl: track.link,
-      }));
-
-    console.log(`Found ${tracks.length} tracks for decade ${decade}`);
-    return tracks.slice(0, limit);
+    
+    console.log(`Total songs found for decade ${decade}: ${allSongs.length}`);
+    return allSongs;
   } catch (error) {
     console.error('Error in searchByDecade:', error);
     return [];
