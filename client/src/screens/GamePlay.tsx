@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { socket } from '../socket';
+import Header from '../components/Header';
 import type { Round, GameMode } from '../types';
 
 interface GamePlayProps {
@@ -8,6 +9,8 @@ interface GamePlayProps {
   roomId: string;
   isHost: boolean;
   gameMode: GameMode;
+  selectionType?: string;
+  currentYear?: number;
   onTimerEnd: () => void;
 }
 
@@ -15,7 +18,10 @@ interface GamePlayProps {
 function createSimpleAudio(audioElement: HTMLAudioElement) {
   return {
     play: (onComplete?: () => void) => {
-      audioElement.volume = 0.5;
+      // Obtener el volumen del localStorage o usar 50% por defecto
+      const savedVolume = localStorage.getItem('musicVolume');
+      const volumePercent = savedVolume ? parseInt(savedVolume) : 50;
+      audioElement.volume = volumePercent / 100;
       audioElement.currentTime = 0;
       
       const playPromise = audioElement.play();
@@ -41,7 +47,7 @@ function createSimpleAudio(audioElement: HTMLAudioElement) {
   };
 }
 
-export default function GamePlay({ round, totalRounds, roomId, gameMode, onTimerEnd }: GamePlayProps) {
+export default function GamePlay({ round, totalRounds, roomId, gameMode, selectionType, currentYear, onTimerEnd }: GamePlayProps) {
   const [selectedSong, setSelectedSong] = useState<string | null>(null);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(-1);
   const [previewsPlayed, setPreviewsPlayed] = useState(false);
@@ -169,10 +175,11 @@ export default function GamePlay({ round, totalRounds, roomId, gameMode, onTimer
 
   return (
     <>
+      <Header showBackButton={false} showVolume={true} />
       <audio ref={audioRef} style={{ display: 'none' }} />
 
       <h1>
-        Ronda {round.roundNumber}/{totalRounds}
+        {selectionType === 'year' && currentYear ? `🎵 AÑO ${currentYear}` : `Ronda ${round.roundNumber}/${totalRounds}`}
       </h1>
       <h2>
         {gameMode === 'save' ? '💚 Salva una canción' : '❌ Elimina una canción'}

@@ -1,12 +1,14 @@
 import type { Room } from '../types';
+import Header from '../components/Header';
 
 interface LobbyProps {
   room: Room;
   isHost: boolean;
   onStartGame: () => void;
+  onBack?: () => void;
 }
 
-export default function Lobby({ room, isHost, onStartGame }: LobbyProps) {
+export default function Lobby({ room, isHost, onStartGame, onBack }: LobbyProps) {
   const copyRoomLink = () => {
     const link = `${window.location.origin}?room=${room.id}`;
     navigator.clipboard.writeText(link);
@@ -15,6 +17,7 @@ export default function Lobby({ room, isHost, onStartGame }: LobbyProps) {
 
   return (
     <>
+      <Header onBack={onBack} showBackButton={!!onBack} />
       <h1>Sala: {room.id}</h1>
       
       <div className="room-code">

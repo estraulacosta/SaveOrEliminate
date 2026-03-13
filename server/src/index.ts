@@ -49,11 +49,22 @@ io.on('connection', (socket) => {
     console.log('Starting game in room:', roomId, 'with config:', config);
     const success = await gameManager.startGame(roomId, config);
     if (success) {
-      const round = gameManager.generateRound(roomId);
+      const round = await gameManager.generateRound(roomId);
       if (round) {
         const room = gameManager.getRoom(roomId);
-        io.to(roomId).emit('game-started', { round, totalRounds: room?.totalRounds });
+        const currentYear = config.selectionType === 'year' && config.yearRange 
+          ? config.yearRange.start 
+          : null;
+        io.to(roomId).emit('game-started', { 
+          round, 
+          totalRounds: room?.totalRounds,
+          currentYear,
+          selectionType: config.selectionType
+        });
         console.log(`Game started in room ${roomId}, round 1/${room?.totalRounds}`);
+      } else {
+        console.error(`Failed to generate first round in room ${roomId}`);
+        io.to(roomId).emit('error', { message: 'Failed to generate first round' });
       }
     }
   });
@@ -80,12 +91,20 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('next-round', ({ roomId }) => {
-    const round = gameManager.generateRound(roomId);
+  socket.on('next-round', async ({ roomId }) => {
+    const round = await gameManager.generateRound(roomId);
     const room = gameManager.getRoom(roomId);
     
     if (round) {
-      io.to(roomId).emit('new-round', { round, totalRounds: room?.totalRounds });
+      const currentYear = room?.gameConfig?.selectionType === 'year' && room.gameConfig.yearRange
+        ? room.gameConfig.yearRange.start + (round.roundNumber - 1)
+        : null;
+      io.to(roomId).emit('new-round', { 
+        round, 
+        totalRounds: room?.totalRounds,
+        currentYear,
+        selectionType: room?.gameConfig?.selectionType
+      });
       console.log(`New round in room ${roomId}: ${round.roundNumber}/${room?.totalRounds}`);
     } else {
       io.to(roomId).emit('game-finished');

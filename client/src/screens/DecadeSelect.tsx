@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import Header from '../components/Header';
 
 interface DecadeSelectProps {
   onSelect: (decadeRange: { start: number; end: number }) => void;
+  onBack?: () => void;
 }
 
-export default function DecadeSelect({ onSelect }: DecadeSelectProps) {
+export default function DecadeSelect({ onSelect, onBack }: DecadeSelectProps) {
   const decades = [1960, 1970, 1980, 1990, 2000, 2010, 2020];
   const [startDecade, setStartDecade] = useState(1990);
   const [endDecade, setEndDecade] = useState(2020);
@@ -21,6 +23,7 @@ export default function DecadeSelect({ onSelect }: DecadeSelectProps) {
 
   return (
     <>
+      <Header onBack={onBack} showBackButton={!!onBack} />
       <h1>Selecciona el Rango de Décadas</h1>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         <label style={{ display: 'block', marginBottom: '10px' }}>
