@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { socket } from './socket';
 import type { Room, Player, GameConfig, Round, Vote } from './types';
 import Home from './screens/Home';
@@ -28,6 +28,7 @@ type Screen =
   | 'year-select'
   | 'decade-select'
   | 'versus-select'
+  | 'loading'
   | 'gameplay'
   | 'vote-results'
   | 'game-finished';
@@ -41,6 +42,8 @@ function App() {
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [totalRounds, setTotalRounds] = useState(0);
   const [votes, setVotes] = useState<Vote[]>([]);
+  const [loadingProgress, setLoadingProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const isStartingGameRef = useRef(false);
 
   useEffect(() => {
     socket.on('room-created', (newRoom: Room) => {
@@ -57,22 +60,39 @@ function App() {
       setRoom(updatedRoom);
     });
 
+    // Precarga de canciones: mostrar pantalla de carga
+    socket.on('game-loading', ({ loadedYears, totalYears }: { loadedYears: number; totalYears: number }) => {
+      if (!isStartingGameRef.current) return;
+      setLoadingProgress({ loaded: loadedYears, total: totalYears });
+      setCurrentScreen((prev) => {
+        if (prev === 'gameplay' || prev === 'vote-results' || prev === 'game-finished') {
+          return prev;
+        }
+        return 'loading';
+      });
+    });
+
     socket.on('game-started', ({ round, totalRounds: total }: { round: Round; totalRounds: number }) => {
+      isStartingGameRef.current = false;
       setCurrentRound(round);
       setTotalRounds(total);
+      setLoadingProgress(null);
       setCurrentScreen('gameplay');
     });
 
+    socket.on('game-error', ({ message }: { message: string }) => {
+      isStartingGameRef.current = false;
+      setLoadingProgress(null);
+      setCurrentScreen('lobby');
+      alert(message);
+    });
+
     socket.on('timer-started', () => {
-      if (currentRound) {
-        setCurrentRound({ ...currentRound, timerStarted: true });
-      }
+      setCurrentRound((prev) => (prev ? { ...prev, timerStarted: true } : prev));
     });
 
     socket.on('timer-paused', ({ isPaused }: { isPaused: boolean }) => {
-      if (currentRound) {
-        setCurrentRound({ ...currentRound, isPaused });
-      }
+      setCurrentRound((prev) => (prev ? { ...prev, isPaused } : prev));
     });
 
     socket.on('vote-submitted', ({ votes: newVotes }: { votes: Vote[]; players: Player[] }) => {
@@ -82,6 +102,7 @@ function App() {
     socket.on('new-round', ({ round, totalRounds: total }: { round: Round; totalRounds: number }) => {
       setCurrentRound(round);
       setTotalRounds(total);
+      setLoadingProgress(null);
       setVotes([]);
       setCurrentScreen('gameplay');
     });
@@ -91,6 +112,7 @@ function App() {
     });
 
     socket.on('game-reset', (updatedRoom: Room) => {
+      isStartingGameRef.current = false;
       setRoom(updatedRoom);
       setGameConfig({});
       setCurrentRound(null);
@@ -106,7 +128,9 @@ function App() {
       socket.off('room-created');
       socket.off('room-joined');
       socket.off('player-joined');
+      socket.off('game-loading');
       socket.off('game-started');
+      socket.off('game-error');
       socket.off('timer-started');
       socket.off('timer-paused');
       socket.off('vote-submitted');
@@ -115,7 +139,7 @@ function App() {
       socket.off('game-reset');
       socket.off('error');
     };
-  }, [currentRound]);
+  }, []);
 
   const isHost = room?.players.find(p => p.id === socket.id)?.isHost || false;
 
@@ -183,6 +207,9 @@ function App() {
         return <GenreSelect
           onSelect={(genre) => {
             const config = { ...gameConfig, genre } as GameConfig;
+            isStartingGameRef.current = true;
+            setLoadingProgress({ loaded: 0, total: 0 });
+            setCurrentScreen('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
         />;
@@ -191,6 +218,9 @@ function App() {
         return <ArtistSelect
           onSelect={(artist) => {
             const config = { ...gameConfig, artist } as GameConfig;
+            isStartingGameRef.current = true;
+            setLoadingProgress({ loaded: 0, total: 0 });
+            setCurrentScreen('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
         />;
@@ -199,6 +229,9 @@ function App() {
         return <YearSelect
           onSelect={(yearRange) => {
             const config = { ...gameConfig, yearRange } as GameConfig;
+            isStartingGameRef.current = true;
+            setLoadingProgress({ loaded: 0, total: 0 });
+            setCurrentScreen('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
         />;
@@ -207,14 +240,57 @@ function App() {
         return <DecadeSelect
           onSelect={(decadeRange) => {
             const config = { ...gameConfig, decadeRange } as GameConfig;
+            isStartingGameRef.current = true;
+            setLoadingProgress({ loaded: 0, total: 0 });
+            setCurrentScreen('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
         />;
+
+      case 'loading':
+        return (
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🎵</div>
+            <h2 style={{ marginBottom: '10px' }}>Cargando canciones por año...</h2>
+            {loadingProgress && loadingProgress.total > 0 && (
+              <>
+                <p style={{ opacity: 0.7, marginBottom: '20px' }}>
+                  Año {loadingProgress.loaded} de {loadingProgress.total}
+                </p>
+                <div style={{
+                  background: 'rgba(255,255,255,0.15)',
+                  borderRadius: '8px',
+                  height: '12px',
+                  maxWidth: '400px',
+                  margin: '0 auto',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    background: 'linear-gradient(90deg, #6c63ff, #ff6584)',
+                    height: '100%',
+                    width: `${(loadingProgress.loaded / loadingProgress.total) * 100}%`,
+                    transition: 'width 0.4s ease',
+                    borderRadius: '8px',
+                  }} />
+                </div>
+                <p style={{ marginTop: '12px', fontSize: '0.9rem', opacity: 0.5 }}>
+                  Esto puede tardar unos segundos según el rango de años
+                </p>
+              </>
+            )}
+            {(!loadingProgress || loadingProgress.total === 0) && (
+              <p style={{ opacity: 0.6 }}>Buscando canciones...</p>
+            )}
+          </div>
+        );
 
       case 'versus-select':
         return <VersusSelect
           onSelect={(versusConfig) => {
             const config = { ...gameConfig, versusConfig } as GameConfig;
+            isStartingGameRef.current = true;
+            setLoadingProgress({ loaded: 0, total: 0 });
+            setCurrentScreen('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
         />;

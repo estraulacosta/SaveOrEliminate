@@ -47,16 +47,33 @@ io.on('connection', (socket) => {
 
   socket.on('start-game', async ({ roomId, config }: { roomId: string; config: GameConfig }) => {
     console.log('Starting game in room:', roomId, 'with config:', config);
-    const success = await gameManager.startGame(roomId, config);
+
+    // Emitir evento de carga inicial
+    io.to(roomId).emit('game-loading', { loadedYears: 0, totalYears: config.selectionType === 'year' && config.yearRange
+      ? config.yearRange.end - config.yearRange.start + 1
+      : 0
+    });
+
+    const success = await gameManager.startGame(roomId, config, (loadedYears, totalYears) => {
+      // Emitir progreso de carga año a año
+      io.to(roomId).emit('game-loading', { loadedYears, totalYears });
+    });
+
     if (success) {
-      const round = gameManager.generateRound(roomId);
+      const round = await gameManager.generateRound(roomId);
       if (round) {
         const room = gameManager.getRoom(roomId);
         io.to(roomId).emit('game-started', { round, totalRounds: room?.totalRounds });
         console.log(`Game started in room ${roomId}, round 1/${room?.totalRounds}`);
+      } else {
+        io.to(roomId).emit('game-error', { message: 'No se encontraron canciones suficientes en el rango de años. Prueba otro rango o menos canciones por ronda.' });
+        gameManager.resetGame(roomId);
       }
+    } else {
+      io.to(roomId).emit('game-error', { message: 'No se pudo iniciar la partida.' });
     }
   });
+
 
   socket.on('start-timer', ({ roomId }) => {
     gameManager.startTimer(roomId);
@@ -80,8 +97,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('next-round', ({ roomId }) => {
-    const round = gameManager.generateRound(roomId);
+  socket.on('next-round', async ({ roomId }) => {
+    const round = await gameManager.generateRound(roomId);
     const room = gameManager.getRoom(roomId);
     
     if (round) {

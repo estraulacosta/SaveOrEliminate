@@ -5,8 +5,11 @@ interface YearSelectProps {
 }
 
 export default function YearSelect({ onSelect }: YearSelectProps) {
+  const currentYear = new Date().getFullYear();
+  const minYear = 1960;
+  const years = Array.from({ length: currentYear - minYear + 1 }, (_, i) => currentYear - i);
   const [startYear, setStartYear] = useState(2000);
-  const [endYear, setEndYear] = useState(2025);
+  const [endYear, setEndYear] = useState(currentYear);
 
   const handleSubmit = () => {
     if (startYear <= endYear) {
@@ -22,23 +25,31 @@ export default function YearSelect({ onSelect }: YearSelectProps) {
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         <label style={{ display: 'block', marginBottom: '10px' }}>
           Año Inicial:
-          <input
-            type="number"
-            min={1960}
-            max={2025}
+          <select
             value={startYear}
             onChange={(e) => setStartYear(parseInt(e.target.value))}
-          />
+            style={{ width: '100%', marginTop: '8px', padding: '10px', borderRadius: '8px' }}
+          >
+            {years.slice().reverse().map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
         </label>
         <label style={{ display: 'block', marginBottom: '20px' }}>
           Año Final:
-          <input
-            type="number"
-            min={1960}
-            max={2025}
+          <select
             value={endYear}
             onChange={(e) => setEndYear(parseInt(e.target.value))}
-          />
+            style={{ width: '100%', marginTop: '8px', padding: '10px', borderRadius: '8px' }}
+          >
+            {years.slice().reverse().map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
         </label>
         <p style={{ textAlign: 'center', marginBottom: '20px' }}>
           {endYear - startYear + 1} años = {endYear - startYear + 1} rondas

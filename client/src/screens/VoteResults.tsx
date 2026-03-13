@@ -21,7 +21,23 @@ export default function VoteResults({ round, players, votes, isHost, onNextRound
   return (
     <>
       <h1>Resultados - Ronda {round.roundNumber}</h1>
-      
+      {round.yearLabel && (
+        <div style={{
+          display: 'inline-block',
+          background: 'linear-gradient(135deg, #6c63ff, #ff6584)',
+          color: '#fff',
+          borderRadius: '30px',
+          padding: '5px 18px',
+          fontSize: '1.2rem',
+          fontWeight: 700,
+          letterSpacing: '2px',
+          marginBottom: '16px',
+          boxShadow: '0 4px 16px rgba(108,99,255,0.3)',
+        }}>
+          📅 {round.yearLabel}
+        </div>
+      )}
+
       <div className="vote-results">
         <h2>Votos:</h2>
         {votes.length > 0 ? (

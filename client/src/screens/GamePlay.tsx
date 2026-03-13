@@ -87,6 +87,22 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
       <h1>
         Ronda {round.roundNumber}/{totalRounds}
       </h1>
+      {round.yearLabel && (
+        <div style={{
+          display: 'inline-block',
+          background: 'linear-gradient(135deg, #6c63ff, #ff6584)',
+          color: '#fff',
+          borderRadius: '30px',
+          padding: '6px 22px',
+          fontSize: '1.4rem',
+          fontWeight: 700,
+          letterSpacing: '2px',
+          marginBottom: '10px',
+          boxShadow: '0 4px 16px rgba(108,99,255,0.4)',
+        }}>
+          📅 {round.yearLabel}
+        </div>
+      )}
       <h2>
         {gameMode === 'save' ? '💚 Salva una canción' : '❌ Elimina una canción'}
       </h2>

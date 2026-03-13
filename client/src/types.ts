@@ -5,6 +5,7 @@ export interface Song {
   previewUrl: string | null;
   albumArt: string;
   spotifyUrl: string;
+  releaseYear?: number;
 }
 
 export interface Player {
@@ -42,6 +43,7 @@ export interface Round {
   votes: Vote[];
   isPaused: boolean;
   timerStarted: boolean;
+  yearLabel?: string; // Solo en modo año, ej: "1985"
 }
 
 export interface Room {
