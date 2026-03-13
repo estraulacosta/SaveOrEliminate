@@ -194,25 +194,43 @@ export async function startGame(roomId: string, config: GameConfig): Promise<boo
   return true;
 }
 
-export function generateRound(roomId: string): Round | null {
+export async function generateRound(roomId: string): Promise<Round | null> {
   const room = rooms.get(roomId);
   if (!room || !room.gameConfig) return null;
   
-  const { songsPerRound } = room.gameConfig;
-  const availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
+  const { songsPerRound, selectionType, yearRange } = room.gameConfig;
+  const roundNumber = room.currentRound ? room.currentRound.roundNumber + 1 : 1;
+  
+  let availableSongs: Song[];
+  
+  // Para year mode, obtener SOLO las canciones del año actual de esa ronda
+  if (selectionType === 'year' && yearRange) {
+    const currentYear = yearRange.start + (roundNumber - 1);
+    if (currentYear > yearRange.end) {
+      console.log(`End of year range. Current year ${currentYear} exceeds end ${yearRange.end}`);
+      return null; // Ya pasamos el rango de años
+    }
+    console.log(`[Ronda ${roundNumber}] Fetching songs for year ${currentYear}...`);
+    availableSongs = await deezer.searchByYear(currentYear, 100);
+    console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for year ${currentYear}`);
+  } else {
+    // Para otros modos, usar las canciones pre-cargadas
+    availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
+  }
   
   if (availableSongs.length < songsPerRound) {
-    return null; // No hay suficientes canciones
+    console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
+    return null;
   }
   
   // Seleccionar canciones aleatorias
   const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
   const selectedSongs = shuffled.slice(0, songsPerRound);
   
-  // Marcar como usadas
-  selectedSongs.forEach(song => room.usedSongIds.add(song.id));
-  
-  const roundNumber = room.currentRound ? room.currentRound.roundNumber + 1 : 1;
+  // Marcar como usadas (solo para no-year modes)
+  if (selectionType !== 'year') {
+    selectedSongs.forEach(song => room.usedSongIds.add(song.id));
+  }
   
   const round: Round = {
     roundNumber,
@@ -223,6 +241,7 @@ export function generateRound(roomId: string): Round | null {
   };
   
   room.currentRound = round;
+  console.log(`Created round ${roundNumber} with ${selectedSongs.length} songs`);
   return round;
 }
 
