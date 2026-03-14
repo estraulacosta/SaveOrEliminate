@@ -73,7 +73,7 @@ function App() {
       setRoom(updatedRoom);
     });
 
-    socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string }) => {
+    socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, versusInfo, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; versusInfo?: any; selectionType?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
       if (currentYear !== undefined) {
@@ -81,6 +81,9 @@ function App() {
       }
       if (currentDecade !== undefined) {
         setGameConfig(prev => ({ ...prev, currentDecade }));
+      }
+      if (versusInfo !== undefined) {
+        setGameConfig(prev => ({ ...prev, versusInfo }));
       }
       if (selectionType !== undefined) {
         setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
@@ -104,7 +107,7 @@ function App() {
       setVotes(newVotes);
     });
 
-    socket.on('new-round', ({ round, totalRounds: total, currentYear, currentDecade, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string }) => {
+    socket.on('new-round', ({ round, totalRounds: total, currentYear, currentDecade, versusInfo, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; versusInfo?: any; selectionType?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
       if (currentYear !== undefined) {
@@ -112,6 +115,9 @@ function App() {
       }
       if (currentDecade !== undefined) {
         setGameConfig(prev => ({ ...prev, currentDecade }));
+      }
+      if (versusInfo !== undefined) {
+        setGameConfig(prev => ({ ...prev, versusInfo }));
       }
       if (selectionType !== undefined) {
         setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
@@ -199,7 +205,12 @@ function App() {
         return <MusicTypeSelect
           onSelect={(type) => {
             setGameConfig({ ...gameConfig, selectionType: type });
-            navigateTo('songs-per-round');
+            // Versus va directo a versus-select sin pedir canciones por ronda
+            if (type === 'versus') {
+              navigateTo('versus-select');
+            } else {
+              navigateTo('songs-per-round');
+            }
           }}
           onBack={goBack}
         />;
@@ -261,7 +272,8 @@ function App() {
       case 'versus-select':
         return <VersusSelect
           onSelect={(versusConfig) => {
-            const config = { ...gameConfig, versusConfig } as GameConfig;
+            // En versus siempre son 2 canciones por ronda (1v1)
+            const config = { ...gameConfig, versusConfig, songsPerRound: 2 } as GameConfig;
             navigateTo('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
@@ -281,6 +293,7 @@ function App() {
           selectionType={gameConfig.selectionType}
           currentYear={gameConfig.currentYear as number | undefined}
           currentDecade={gameConfig.currentDecade as number | undefined}
+          versusInfo={gameConfig.versusInfo as any}
           onTimerEnd={() => navigateTo('vote-results')}
         />;
 

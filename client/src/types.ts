@@ -30,7 +30,11 @@ export interface GameConfig {
     option2: string;
   };
   currentYear?: number;
+<<<<<<< Updated upstream
   currentDecade?: number;
+=======
+  versusInfo?: string;
+>>>>>>> Stashed changes
 }
 
 export interface Vote {

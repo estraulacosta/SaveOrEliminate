@@ -12,6 +12,7 @@ interface GamePlayProps {
   selectionType?: string;
   currentYear?: number;
   currentDecade?: number;
+  versusInfo?: any;
   onTimerEnd: () => void;
 }
 
@@ -48,7 +49,7 @@ function createSimpleAudio(audioElement: HTMLAudioElement) {
   };
 }
 
-export default function GamePlay({ round, totalRounds, roomId, gameMode, selectionType, currentYear, currentDecade, onTimerEnd }: GamePlayProps) {
+export default function GamePlay({ round, totalRounds, roomId, gameMode, selectionType, currentYear, currentDecade, versusInfo, onTimerEnd }: GamePlayProps) {
   const [selectedSong, setSelectedSong] = useState<string | null>(null);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(-1);
   const [previewsPlayed, setPreviewsPlayed] = useState(false);
@@ -180,7 +181,7 @@ export default function GamePlay({ round, totalRounds, roomId, gameMode, selecti
       <audio ref={audioRef} style={{ display: 'none' }} />
 
       <h1>
-        {selectionType === 'year' && currentYear ? `🎵 AÑO ${currentYear}` : selectionType === 'decade' && currentDecade ? `🎵 DÉCADA DE LOS ${currentDecade}S` : `Ronda ${round.roundNumber}/${totalRounds}`}
+        {selectionType === 'year' && currentYear ? `🎵 AÑO ${currentYear} - Ronda ${round.roundNumber}/${totalRounds}` : selectionType === 'decade' && currentDecade ? `🎵 DÉCADA DE LOS ${currentDecade}S - Ronda ${round.roundNumber}/${totalRounds}` : selectionType === 'versus' && versusInfo?.type === 'artist' ? `⚔️ ${versusInfo.option1} VS ${versusInfo.option2} - Ronda ${round.roundNumber}/${totalRounds}` : selectionType === 'versus' && versusInfo?.type === 'year' ? `⚔️ ${versusInfo.option1} VS ${versusInfo.option2} - Ronda ${round.roundNumber}/${totalRounds}` : selectionType === 'versus' && versusInfo?.type === 'genre' ? `⚔️ ${versusInfo.option1} VS ${versusInfo.option2} - Ronda ${round.roundNumber}/${totalRounds}` : selectionType === 'versus' && versusInfo?.type === 'decade' ? `⚔️ Años ${versusInfo.option1} VS Años ${versusInfo.option2} - Ronda ${round.roundNumber}/${totalRounds}` : `Ronda ${round.roundNumber}/${totalRounds}`}
       </h1>
       <h2>
         {gameMode === 'save' ? '💚 Salva una canción' : '❌ Elimina una canción'}

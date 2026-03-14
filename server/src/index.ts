@@ -58,11 +58,15 @@ io.on('connection', (socket) => {
         const currentDecade = config.selectionType === 'decade' && config.decadeRange
           ? config.decadeRange.start
           : null;
+        const versusInfo = config.selectionType === 'versus' && config.versusConfig
+          ? config.versusConfig
+          : null;
         io.to(roomId).emit('game-started', { 
           round, 
           totalRounds: room?.totalRounds,
           currentYear,
           currentDecade,
+          versusInfo,
           selectionType: config.selectionType
         });
         console.log(`Game started in room ${roomId}, round 1/${room?.totalRounds}`);
@@ -106,11 +110,15 @@ io.on('connection', (socket) => {
       const currentDecade = room?.gameConfig?.selectionType === 'decade' && room.gameConfig.decadeRange
         ? room.gameConfig.decadeRange.start + (round.roundNumber - 1) * 10
         : null;
+      const versusInfo = room?.gameConfig?.selectionType === 'versus' && room.gameConfig.versusConfig
+        ? room.gameConfig.versusConfig
+        : null;
       io.to(roomId).emit('new-round', { 
         round, 
         totalRounds: room?.totalRounds,
         currentYear,
         currentDecade,
+        versusInfo,
         selectionType: room?.gameConfig?.selectionType
       });
       console.log(`New round in room ${roomId}: ${round.roundNumber}/${room?.totalRounds}`);
