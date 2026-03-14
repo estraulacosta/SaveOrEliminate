@@ -342,79 +342,54 @@ export async function startGame(
   return true;
 }
 
-// ============================================================
-// Generación de rondas: diferenciada por modo
-// ============================================================
 export async function generateRound(roomId: string): Promise<Round | null> {
   const room = rooms.get(roomId);
   if (!room || !room.gameConfig) return null;
-
-  // ---- Modo AÑO ----
-  if (room.gameConfig.selectionType === 'year' && room.yearSongPool && room.gameConfig.yearRange) {
-    const { start, end } = room.gameConfig.yearRange;
-    const { songsPerRound } = room.gameConfig;
-    let currentYearIndex = room.currentYearIndex ?? 0;
-    let currentYear = start + currentYearIndex;
-
-    while (currentYear <= end) {
-      // precarga anticipada de próximos años para reducir espera entre rondas
-      for (let offset = 1; offset <= 3; offset++) {
-        const prefetchYear = currentYear + offset;
-        if (prefetchYear <= end) {
-          void ensureYearSongsLoaded(room, prefetchYear);
-        }
-      }
-
-      const yearsPool = await ensureYearSongsLoaded(room, currentYear);
-      if (yearsPool.length >= songsPerRound) {
-        const selectedSongs = pickUniqueSongs(yearsPool, songsPerRound);
-        if (selectedSongs.length < songsPerRound) {
-          console.warn(`[Year Mode] Year ${currentYear} lacks ${songsPerRound} unique songs after dedupe, skipping`);
-          currentYearIndex += 1;
-          currentYear = start + currentYearIndex;
-          room.currentYearIndex = currentYearIndex;
-          continue;
-        }
-        const roundNumber = currentYearIndex + 1;
-
-        room.currentYearIndex = currentYearIndex + 1;
-
-        const round: Round = {
-          roundNumber,
-          songs: selectedSongs,
-          votes: [],
-          isPaused: false,
-          timerStarted: false,
-          yearLabel: `${currentYear}`,
-        };
-
-        room.currentRound = round;
-        return round;
-      }
-
-      console.warn(`[Year Mode] Year ${currentYear} has ${yearsPool.length} songs, skipping`);
-      currentYearIndex += 1;
-      currentYear = start + currentYearIndex;
-      room.currentYearIndex = currentYearIndex;
+  
+  const { songsPerRound, selectionType, yearRange, decadeRange } = room.gameConfig;
+  const roundNumber = room.currentRound ? room.currentRound.roundNumber + 1 : 1;
+  
+  let availableSongs: Song[];
+  
+  // Para year mode, obtener SOLO las canciones del año actual de esa ronda
+  if (selectionType === 'year' && yearRange) {
+    const currentYear = yearRange.start + (roundNumber - 1);
+    if (currentYear > yearRange.end) {
+      console.log(`End of year range. Current year ${currentYear} exceeds end ${yearRange.end}`);
+      return null; // Ya pasamos el rango de años
     }
-
-    return null;
+    console.log(`[Ronda ${roundNumber}] Fetching songs for year ${currentYear}...`);
+    availableSongs = await deezer.searchByYear(currentYear, 100);
+    console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for year ${currentYear}`);
+  } 
+  // Para decade mode, obtener SOLO las canciones de la década actual de esa ronda
+  else if (selectionType === 'decade' && decadeRange) {
+    const currentDecade = decadeRange.start + (roundNumber - 1) * 10;
+    if (currentDecade > decadeRange.end) {
+      console.log(`End of decade range. Current decade ${currentDecade} exceeds end ${decadeRange.end}`);
+      return null; // Ya pasamos el rango de décadas
+    }
+    console.log(`[Ronda ${roundNumber}] Fetching songs for decade ${currentDecade}s...`);
+    availableSongs = await deezer.searchByDecade(currentDecade, currentDecade + 9, 100);
+    console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for decade ${currentDecade}s`);
   }
-
-  // ---- Otros modos: pool global ----
-  const { songsPerRound } = room.gameConfig;
-  const availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
+  else {
+    // Para otros modos, usar las canciones pre-cargadas
+    availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
+  }
   
   if (availableSongs.length < songsPerRound) {
+    console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
     return null;
   }
   
   const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
   const selectedSongs = shuffled.slice(0, songsPerRound);
   
-  selectedSongs.forEach(song => room.usedSongIds.add(song.id));
-  
-  const roundNumber = room.currentRound ? room.currentRound.roundNumber + 1 : 1;
+  // Marcar como usadas (solo para no-year modes)
+  if (selectionType !== 'year') {
+    selectedSongs.forEach(song => room.usedSongIds.add(song.id));
+  }
   
   const round: Round = {
     roundNumber,
@@ -425,6 +400,7 @@ export async function generateRound(roomId: string): Promise<Round | null> {
   };
   
   room.currentRound = round;
+  console.log(`Created round ${roundNumber} with ${selectedSongs.length} songs`);
   return round;
 }
 

@@ -63,11 +63,23 @@ io.on('connection', (socket) => {
       const round = await gameManager.generateRound(roomId);
       if (round) {
         const room = gameManager.getRoom(roomId);
-        io.to(roomId).emit('game-started', { round, totalRounds: room?.totalRounds });
+        const currentYear = config.selectionType === 'year' && config.yearRange 
+          ? config.yearRange.start 
+          : null;
+        const currentDecade = config.selectionType === 'decade' && config.decadeRange
+          ? config.decadeRange.start
+          : null;
+        io.to(roomId).emit('game-started', { 
+          round, 
+          totalRounds: room?.totalRounds,
+          currentYear,
+          currentDecade,
+          selectionType: config.selectionType
+        });
         console.log(`Game started in room ${roomId}, round 1/${room?.totalRounds}`);
       } else {
-        io.to(roomId).emit('game-error', { message: 'No se encontraron canciones suficientes en el rango de años. Prueba otro rango o menos canciones por ronda.' });
-        gameManager.resetGame(roomId);
+        console.error(`Failed to generate first round in room ${roomId}`);
+        io.to(roomId).emit('error', { message: 'Failed to generate first round' });
       }
     } else {
       io.to(roomId).emit('game-error', { message: 'No se pudo iniciar la partida.' });
@@ -102,7 +114,19 @@ io.on('connection', (socket) => {
     const room = gameManager.getRoom(roomId);
     
     if (round) {
-      io.to(roomId).emit('new-round', { round, totalRounds: room?.totalRounds });
+      const currentYear = room?.gameConfig?.selectionType === 'year' && room.gameConfig.yearRange
+        ? room.gameConfig.yearRange.start + (round.roundNumber - 1)
+        : null;
+      const currentDecade = room?.gameConfig?.selectionType === 'decade' && room.gameConfig.decadeRange
+        ? room.gameConfig.decadeRange.start + (round.roundNumber - 1) * 10
+        : null;
+      io.to(roomId).emit('new-round', { 
+        round, 
+        totalRounds: room?.totalRounds,
+        currentYear,
+        currentDecade,
+        selectionType: room?.gameConfig?.selectionType
+      });
       console.log(`New round in room ${roomId}: ${round.roundNumber}/${room?.totalRounds}`);
     } else {
       io.to(roomId).emit('game-finished');

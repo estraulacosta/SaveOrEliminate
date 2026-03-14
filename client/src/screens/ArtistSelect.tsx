@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { socket } from '../socket';
+import Header from '../components/Header';
 
 interface Artist {
   name: string;
@@ -8,9 +9,10 @@ interface Artist {
 
 interface ArtistSelectProps {
   onSelect: (artist: string) => void;
+  onBack?: () => void;
 }
 
-export default function ArtistSelect({ onSelect }: ArtistSelectProps) {
+export default function ArtistSelect({ onSelect, onBack }: ArtistSelectProps) {
   const [topArtists, setTopArtists] = useState<Artist[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Artist[]>([]);
@@ -44,6 +46,7 @@ export default function ArtistSelect({ onSelect }: ArtistSelectProps) {
 
   return (
     <>
+      <Header onBack={onBack} showBackButton={!!onBack} />
       <h1>Selecciona un Artista</h1>
 
       <input

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Header from '../components/Header';
 
 interface VersusConfig {
   type: 'artist' | 'year' | 'genre' | 'decade';
@@ -8,9 +9,10 @@ interface VersusConfig {
 
 interface VersusSelectProps {
   onSelect: (config: VersusConfig) => void;
+  onBack?: () => void;
 }
 
-export default function VersusSelect({ onSelect }: VersusSelectProps) {
+export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
   const [type, setType] = useState<'artist' | 'year' | 'genre' | 'decade'>('artist');
   const [option1, setOption1] = useState('');
   const [option2, setOption2] = useState('');
@@ -25,6 +27,7 @@ export default function VersusSelect({ onSelect }: VersusSelectProps) {
 
   return (
     <>
+      <Header onBack={onBack} showBackButton={!!onBack} />
       <h1>Modo Versus - 1 vs 1</h1>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         <label style={{ display: 'block', marginBottom: '10px' }}>

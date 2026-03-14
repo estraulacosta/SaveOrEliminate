@@ -15,6 +15,7 @@ import VersusSelect from './screens/VersusSelect';
 import GamePlay from './screens/GamePlay';
 import VoteResults from './screens/VoteResults';
 import GameFinished from './screens/GameFinished';
+import LoadingScreen from './screens/LoadingScreen';
 
 type Screen = 
   | 'home'
@@ -35,6 +36,7 @@ type Screen =
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+  const [screenHistory, setScreenHistory] = useState<Screen[]>(['home']);
   const [room, setRoom] = useState<Room | null>(null);
   const [, setPlayerName] = useState('');
   const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
@@ -44,6 +46,19 @@ function App() {
   const [votes, setVotes] = useState<Vote[]>([]);
   const [loadingProgress, setLoadingProgress] = useState<{ loaded: number; total: number } | null>(null);
   const isStartingGameRef = useRef(false);
+
+  const navigateTo = (screen: Screen) => {
+    setCurrentScreen(screen);
+    setScreenHistory(prev => [...prev, screen]);
+  };
+
+  const goBack = () => {
+    if (screenHistory.length > 1) {
+      const newHistory = screenHistory.slice(0, -1);
+      setScreenHistory(newHistory);
+      setCurrentScreen(newHistory[newHistory.length - 1]);
+    }
+  };
 
   useEffect(() => {
     socket.on('room-created', (newRoom: Room) => {
@@ -60,23 +75,18 @@ function App() {
       setRoom(updatedRoom);
     });
 
-    // Precarga de canciones: mostrar pantalla de carga
-    socket.on('game-loading', ({ loadedYears, totalYears }: { loadedYears: number; totalYears: number }) => {
-      if (!isStartingGameRef.current) return;
-      setLoadingProgress({ loaded: loadedYears, total: totalYears });
-      setCurrentScreen((prev) => {
-        if (prev === 'gameplay' || prev === 'vote-results' || prev === 'game-finished') {
-          return prev;
-        }
-        return 'loading';
-      });
-    });
-
-    socket.on('game-started', ({ round, totalRounds: total }: { round: Round; totalRounds: number }) => {
-      isStartingGameRef.current = false;
+    socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
-      setLoadingProgress(null);
+      if (currentYear !== undefined) {
+        setGameConfig(prev => ({ ...prev, currentYear }));
+      }
+      if (currentDecade !== undefined) {
+        setGameConfig(prev => ({ ...prev, currentDecade }));
+      }
+      if (selectionType !== undefined) {
+        setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
+      }
       setCurrentScreen('gameplay');
     });
 
@@ -99,10 +109,18 @@ function App() {
       setVotes(newVotes);
     });
 
-    socket.on('new-round', ({ round, totalRounds: total }: { round: Round; totalRounds: number }) => {
+    socket.on('new-round', ({ round, totalRounds: total, currentYear, currentDecade, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
-      setLoadingProgress(null);
+      if (currentYear !== undefined) {
+        setGameConfig(prev => ({ ...prev, currentYear }));
+      }
+      if (currentDecade !== undefined) {
+        setGameConfig(prev => ({ ...prev, currentDecade }));
+      }
+      if (selectionType !== undefined) {
+        setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
+      }
       setVotes([]);
       setCurrentScreen('gameplay');
     });
@@ -148,10 +166,10 @@ function App() {
       case 'home':
         return <Home onAction={(action, roomId) => {
           if (action === 'create') {
-            setCurrentScreen('enter-name');
+            navigateTo('enter-name');
           } else {
             setPendingRoomId(roomId || null);
-            setCurrentScreen('enter-name');
+            navigateTo('enter-name');
           }
         }} />;
 
@@ -165,29 +183,33 @@ function App() {
               socket.emit('create-room', { playerName: name });
             }
           }}
+          onBack={goBack}
         />;
 
       case 'lobby':
         return <Lobby
           room={room!}
           isHost={isHost}
-          onStartGame={() => setCurrentScreen('game-mode-select')}
+          onStartGame={() => navigateTo('game-mode-select')}
+          onBack={goBack}
         />;
 
       case 'game-mode-select':
         return <GameModeSelect
           onSelect={(mode) => {
             setGameConfig({ ...gameConfig, mode });
-            setCurrentScreen('music-type-select');
+            navigateTo('music-type-select');
           }}
+          onBack={goBack}
         />;
 
       case 'music-type-select':
         return <MusicTypeSelect
           onSelect={(type) => {
             setGameConfig({ ...gameConfig, selectionType: type });
-            setCurrentScreen('songs-per-round');
+            navigateTo('songs-per-round');
           }}
+          onBack={goBack}
         />;
 
       case 'songs-per-round':
@@ -195,56 +217,53 @@ function App() {
           onSelect={(count) => {
             setGameConfig({ ...gameConfig, songsPerRound: count });
             const type = gameConfig.selectionType;
-            if (type === 'genre') setCurrentScreen('genre-select');
-            else if (type === 'artist') setCurrentScreen('artist-select');
-            else if (type === 'year') setCurrentScreen('year-select');
-            else if (type === 'decade') setCurrentScreen('decade-select');
-            else if (type === 'versus') setCurrentScreen('versus-select');
+            if (type === 'genre') navigateTo('genre-select');
+            else if (type === 'artist') navigateTo('artist-select');
+            else if (type === 'year') navigateTo('year-select');
+            else if (type === 'decade') navigateTo('decade-select');
+            else if (type === 'versus') navigateTo('versus-select');
           }}
+          onBack={goBack}
         />;
 
       case 'genre-select':
         return <GenreSelect
           onSelect={(genre) => {
             const config = { ...gameConfig, genre } as GameConfig;
-            isStartingGameRef.current = true;
-            setLoadingProgress({ loaded: 0, total: 0 });
-            setCurrentScreen('loading');
+            navigateTo('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
+          onBack={goBack}
         />;
 
       case 'artist-select':
         return <ArtistSelect
           onSelect={(artist) => {
             const config = { ...gameConfig, artist } as GameConfig;
-            isStartingGameRef.current = true;
-            setLoadingProgress({ loaded: 0, total: 0 });
-            setCurrentScreen('loading');
+            navigateTo('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
+          onBack={goBack}
         />;
 
       case 'year-select':
         return <YearSelect
           onSelect={(yearRange) => {
             const config = { ...gameConfig, yearRange } as GameConfig;
-            isStartingGameRef.current = true;
-            setLoadingProgress({ loaded: 0, total: 0 });
-            setCurrentScreen('loading');
+            navigateTo('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
+          onBack={goBack}
         />;
 
       case 'decade-select':
         return <DecadeSelect
           onSelect={(decadeRange) => {
             const config = { ...gameConfig, decadeRange } as GameConfig;
-            isStartingGameRef.current = true;
-            setLoadingProgress({ loaded: 0, total: 0 });
-            setCurrentScreen('loading');
+            navigateTo('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
+          onBack={goBack}
         />;
 
       case 'loading':
@@ -288,12 +307,14 @@ function App() {
         return <VersusSelect
           onSelect={(versusConfig) => {
             const config = { ...gameConfig, versusConfig } as GameConfig;
-            isStartingGameRef.current = true;
-            setLoadingProgress({ loaded: 0, total: 0 });
-            setCurrentScreen('loading');
+            navigateTo('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
+          onBack={goBack}
         />;
+
+      case 'loading':
+        return <LoadingScreen onBack={goBack} />;
 
       case 'gameplay':
         return <GamePlay
@@ -302,7 +323,10 @@ function App() {
           roomId={room!.id}
           isHost={isHost}
           gameMode={gameConfig.mode!}
-          onTimerEnd={() => setCurrentScreen('vote-results')}
+          selectionType={gameConfig.selectionType}
+          currentYear={gameConfig.currentYear as number | undefined}
+          currentDecade={gameConfig.currentDecade as number | undefined}
+          onTimerEnd={() => navigateTo('vote-results')}
         />;
 
       case 'vote-results':

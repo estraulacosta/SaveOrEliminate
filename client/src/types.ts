@@ -30,6 +30,8 @@ export interface GameConfig {
     option1: string;
     option2: string;
   };
+  currentYear?: number;
+  currentDecade?: number;
 }
 
 export interface Vote {

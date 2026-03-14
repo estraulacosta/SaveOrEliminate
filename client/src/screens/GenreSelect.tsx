@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { socket } from '../socket';
+import Header from '../components/Header';
 
 interface GenreSelectProps {
   onSelect: (genre: string) => void;
+  onBack?: () => void;
 }
 
-export default function GenreSelect({ onSelect }: GenreSelectProps) {
+export default function GenreSelect({ onSelect, onBack }: GenreSelectProps) {
   const [topGenres, setTopGenres] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<string[]>([]);
@@ -31,25 +33,26 @@ export default function GenreSelect({ onSelect }: GenreSelectProps) {
 
   return (
     <>
+      <Header onBack={onBack} showBackButton={!!onBack} />
       <h1>Selecciona un Género</h1>
-
-      <input
-        type="text"
-        placeholder="Buscar género..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        style={{
-          width: '100%',
-          maxWidth: '500px',
-          padding: '15px',
-          fontSize: '1rem',
-          borderRadius: '10px',
-          border: '2px solid rgba(255, 255, 255, 0.3)',
-          background: 'rgba(255, 255, 255, 0.1)',
-          color: 'white',
-          marginBottom: '30px',
-        }}
-      />
+      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+        <input
+          type="text"
+          placeholder="Buscar género..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            width: '100%',
+            maxWidth: '500px',
+            padding: '15px',
+            fontSize: '1rem',
+            borderRadius: '10px',
+            border: '2px solid rgba(255, 255, 255, 0.3)',
+            background: 'rgba(255, 255, 255, 0.1)',
+            color: 'white',
+            marginBottom: '30px',
+          }}
+        />
 
       {displayGenres.length > 0 ? (
         <>
@@ -83,6 +86,7 @@ export default function GenreSelect({ onSelect }: GenreSelectProps) {
           {searchQuery ? 'No se encontraron géneros' : 'Cargando...'}
         </p>
       )}
+      </div>
     </>
   );
 }
