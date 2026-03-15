@@ -32,6 +32,16 @@ export default function VoteResults({ round, votes, players, isHost, onNextRound
 
   const allVotesByColor = votesByColor();
   const songsWithVotes = Object.values(allVotesByColor).filter(item => item.voters.length > 0);
+  
+  // Obtener la canción con más votos para determinar colores
+  const maxVotes = Math.max(...songsWithVotes.map((item: any) => item.voters.length), 0);
+  
+  const getSongColor = (itemVoters: string[]) => {
+    if (itemVoters.length === maxVotes && maxVotes > 0) {
+      return 'var(--color-save)'; // Verde - se salva
+    }
+    return 'var(--color-eliminate)'; // Rojo - se elimina
+  };
 
   return (
     <>
@@ -54,25 +64,26 @@ export default function VoteResults({ round, votes, players, isHost, onNextRound
         </div>
       )}
 
-      <div className="vote-summary" style={{ marginBottom: '1.5rem' }}>
+      <div className="vote-summary" style={{ marginBottom: '1.5rem', maxWidth: 'min(95vw, 2750px)', margin: '1.5rem auto 1.5rem auto' }}>
         {songsWithVotes.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.6rem, 1vw, 0.9rem)', width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.75rem, 1.2vw, 1rem)', width: '100%' }}>
             {songsWithVotes.map((item: any) => {
               const count = item.voters.length;
               const percentage = votes.length > 0 ? (count / votes.length) * 100 : 0;
+              const barColor = getSongColor(item.voters);
               return (
                 <div key={item.song.id} style={{
                   display: 'grid',
-                  gridTemplateColumns: 'clamp(70px, 15vw, 100px) 1fr',
-                  gap: 'clamp(0.5rem, 1vw, 0.8rem)',
+                  gridTemplateColumns: 'clamp(80px, 18vw, 120px) 1fr',
+                  gap: 'clamp(0.75rem, 1.5vw, 1.2rem)',
                   alignItems: 'center',
                   background: 'rgba(255, 255, 255, 0.05)',
                   border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: 'clamp(8px, 1.5vw, 12px)',
-                  padding: 'clamp(0.5rem, 0.8vw, 0.8rem)',
+                  padding: 'clamp(0.75rem, 1vw, 1rem)',
                 }}>
                   {/* LEFT: Imagen + Votantes */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'clamp(0.3rem, 0.5vw, 0.5rem)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'clamp(0.35rem, 0.6vw, 0.6rem)' }}>
                     <img 
                       src={item.song.albumArt} 
                       alt={item.song.name}
@@ -85,14 +96,14 @@ export default function VoteResults({ round, votes, players, isHost, onNextRound
                       }}
                     />
                     <div style={{ textAlign: 'center', width: '100%' }}>
-                      <div style={{ fontWeight: 600, fontSize: 'clamp(0.5rem, 1.2vw, 0.65rem)', marginBottom: 'clamp(0.02rem, 0.1vw, 0.05rem)', wordBreak: 'break-word' }}
+                      <div style={{ fontWeight: 600, fontSize: 'clamp(0.65rem, 1.4vw, 0.85rem)', marginBottom: 'clamp(0.02rem, 0.1vw, 0.05rem)', wordBreak: 'break-word' }}
                         >
                         {item.song.name}
                       </div>
-                      <div style={{ fontSize: 'clamp(0.45rem, 0.9vw, 0.55rem)', opacity: 0.7 }}>
+                      <div style={{ fontSize: 'clamp(0.6rem, 1.1vw, 0.75rem)', opacity: 0.7 }}>
                         {item.song.artist}
                       </div>
-                      <div style={{ fontSize: 'clamp(0.4rem, 0.8vw, 0.5rem)', color: 'rgba(251, 244, 254, 0.8)', marginTop: 'clamp(0.1rem, 0.4vw, 0.2rem)', lineHeight: '1.1' }}>
+                      <div style={{ fontSize: 'clamp(0.55rem, 1vw, 0.7rem)', color: 'rgba(251, 244, 254, 0.8)', marginTop: 'clamp(0.1rem, 0.4vw, 0.2rem)', lineHeight: '1.1' }}>
                         <strong>Votaron:</strong> {item.voters.join(', ')}
                       </div>
                     </div>
@@ -111,12 +122,12 @@ export default function VoteResults({ round, votes, players, isHost, onNextRound
                       <div style={{
                         width: `${percentage}%`,
                         height: '100%',
-                        background: 'linear-gradient(90deg, var(--color-principal), var(--color-save))',
+                        background: barColor,
                         transition: 'width 0.3s ease',
-                        boxShadow: '0 0 15px rgba(128, 22, 199, 0.6)'
+                        boxShadow: `0 0 15px ${barColor === 'var(--color-save)' ? 'rgba(139, 255, 98, 0.6)' : 'rgba(250, 86, 73, 0.6)'}`
                       }} />
                     </div>
-                    <div style={{ fontSize: 'clamp(0.7rem, 1.8vw, 0.9rem)', fontWeight: 'bold', color: 'var(--color-principal)', textAlign: 'right' }}>
+                    <div style={{ fontSize: 'clamp(0.7rem, 1.8vw, 0.9rem)', fontWeight: 'bold', color: barColor, textAlign: 'right' }}>
                       {count} votos ({Math.round(percentage)}%)
                     </div>
                   </div>

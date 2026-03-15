@@ -24,29 +24,29 @@ body {
     radial-gradient(circle at 10% 20%, rgba(128, 22, 199, 0.15) 0%, transparent 20%),
     radial-gradient(circle at 90% 80%, rgba(250, 86, 73, 0.15) 0%, transparent 20%);
   color: var(--color-text);
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   padding: 0;
-  padding-top: clamp(30px, 8vw, 60px);
-  overflow-x: hidden;
-  overflow-y: hidden;
+  padding-top: clamp(30px, 6vw, 60px);
+  overflow-x: auto;
+  overflow-y: auto;
   -webkit-font-smoothing: antialiased;
 }
 
 @media (min-width: 1024px) {
   body {
-    max-height: 100vh;
-    overflow-y: hidden;
+    min-height: 100vh;
+    overflow-y: auto;
   }
 }
 
 #root {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1400px;
   flex: 1;
   margin: 0 auto;
-  padding: clamp(12px, 2vw, 20px);
+  padding: clamp(12px, 1.5vw, 20px);
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
@@ -600,11 +600,11 @@ header {
 .selector-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: clamp(0.8rem, 2vw, 1.5rem);
+  gap: clamp(0.8rem, 1.5vw, 1.5rem);
   width: 100%;
-  max-width: clamp(500px, 90vw, 1200px);
+  max-width: min(95vw, 1300px);
   margin: 0 auto;
-  padding: 0 clamp(0.5rem, 2vw, 1rem);
+  padding: 0 clamp(0.5rem, 1.5vw, 1rem);
 }
 
 .selector-item {

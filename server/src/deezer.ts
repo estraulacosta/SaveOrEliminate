@@ -583,48 +583,82 @@ export async function getTopTracks(limit: number = 20): Promise<Song[]> {
 }
 
 export async function getTopArtists(limit: number = 20): Promise<Array<{name: string; image: string}>> {
+  const artistNames = [
+    'Bruno Mars',
+    'Bad Bunny',
+    'The Weeknd',
+    'Rihanna',
+    'Taylor Swift',
+    'Justin Bieber',
+    'Lady Gaga',
+    'Coldplay',
+    'Billie Eilish',
+    'Drake',
+    'J Balvin',
+    'Ariana Grande',
+    'Ed Sheeran',
+    'David Guetta',
+    'Shakira',
+    'Kendrick Lamar',
+    'Maroon 5',
+    'Eminem',
+    'SZA',
+    'Calvin Harris'
+  ];
+
   try {
-    // Obtener artistas del chart de Deezer
-    const response = await axios.get(`${DEEZER_API}/chart/0/artists`, {
-      params: { limit }
-    });
+    // Buscar imagen para cada artista en Deezer
+    const artists = await Promise.all(
+      artistNames.slice(0, limit).map(async (name) => {
+        try {
+          const response = await axios.get(`${DEEZER_API}/search/artist`, {
+            params: { q: name, limit: 1 }
+          });
+          
+          if (response.data.data && response.data.data.length > 0) {
+            const artist = response.data.data[0];
+            return {
+              name: name,
+              image: artist.picture_medium || artist.picture || artist.picture_small || ''
+            };
+          }
+        } catch (err) {
+          // Ignorar errores individuales y devolver sin imagen
+        }
+        
+        return { name: name, image: '' };
+      })
+    );
 
-    if (!response.data.data || response.data.data.length === 0) {
-      return defaultTopArtists();
-    }
-
-    return response.data.data.map((artist: any) => ({
-      name: artist.name,
-      image: artist.picture_medium || artist.picture || artist.picture_small || ''
-    }));
+    return artists;
   } catch (error) {
     console.error('Error getting top artists:', error);
-    return defaultTopArtists();
+    return defaultTopArtists().slice(0, limit);
   }
 }
 
 function defaultTopArtists(): Array<{name: string; image: string}> {
   return [
-    { name: 'Taylor Swift', image: '' },
+    { name: 'Bruno Mars', image: '' },
     { name: 'Bad Bunny', image: '' },
-    { name: 'Drake', image: '' },
     { name: 'The Weeknd', image: '' },
+    { name: 'Rihanna', image: '' },
+    { name: 'Taylor Swift', image: '' },
+    { name: 'Justin Bieber', image: '' },
+    { name: 'Lady Gaga', image: '' },
+    { name: 'Coldplay', image: '' },
+    { name: 'Billie Eilish', image: '' },
+    { name: 'Drake', image: '' },
+    { name: 'J Balvin', image: '' },
     { name: 'Ariana Grande', image: '' },
     { name: 'Ed Sheeran', image: '' },
-    { name: 'Justin Bieber', image: '' },
-    { name: 'Billie Eilish', image: '' },
-    { name: 'Post Malone', image: '' },
-    { name: 'Dua Lipa', image: '' },
-    { name: 'Olivia Rodrigo', image: '' },
-    { name: 'Harry Styles', image: '' },
-    { name: 'BTS', image: '' },
-    { name: 'Coldplay', image: '' },
-    { name: 'Imagine Dragons', image: '' },
+    { name: 'David Guetta', image: '' },
+    { name: 'Shakira', image: '' },
+    { name: 'Kendrick Lamar', image: '' },
     { name: 'Maroon 5', image: '' },
-    { name: 'Rihanna', image: '' },
     { name: 'Eminem', image: '' },
-    { name: 'Kanye West', image: '' },
-    { name: 'Beyoncé', image: '' }
+    { name: 'SZA', image: '' },
+    { name: 'Calvin Harris', image: '' }
   ];
 }
 
