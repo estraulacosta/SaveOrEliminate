@@ -76,7 +76,7 @@ io.on('connection', (socket) => {
       : 0
     });
 
-    const success = await gameManager.startGame(roomId, config, (loadedYears: number, totalYears: number) => {
+    const success = await gameManager.startGame(roomId, config, (loadedYears, totalYears) => {
       // Emitir progreso de carga año a año
       io.to(roomId).emit('game-loading', { loadedYears, totalYears });
     });
