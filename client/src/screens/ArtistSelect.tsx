@@ -78,7 +78,7 @@ export default function ArtistSelect({ onSelect, onBack }: ArtistSelectProps) {
             <p style={{ opacity: 0.7, marginBottom: 'clamp(0.8rem, 2vw, 1.5rem)', textAlign: 'center', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
               {searchQuery.length >= 2 ? `${searchResults.length} resultados` : 'Top 20 artistas populares'}
             </p>
-            <div className="grid" style={{ maxWidth: '1300px', gridTemplateColumns: 'repeat(auto-fit, minmax(clamp(100px, 20vw, 140px), 1fr))', gap: 'clamp(0.8rem, 2vw, 1.2rem)', margin: '0 auto' }}>
+            <div className="grid" style={{ maxWidth: '1300px', gridTemplateColumns: 'repeat(5, 1fr)', gap: 'clamp(0.8rem, 2vw, 1.2rem)', margin: '0 auto', padding: '0 clamp(0.5rem, 2vw, 1rem)' }}>
               {displayArtists.map((artist) => (
                 <button
                   type="button"
