@@ -254,10 +254,10 @@ export async function searchGenres(query: string): Promise<string[]> {
 
 export async function getTopArtists(limit: number = 20): Promise<string[]> {
   const popularArtists = [
-    'Taylor Swift', 'Bad Bunny', 'Drake', 'The Weeknd', 'Ariana Grande',
-    'Ed Sheeran', 'Justin Bieber', 'Billie Eilish', 'Post Malone', 'Dua Lipa',
-    'Olivia Rodrigo', 'Harry Styles', 'BTS', 'Coldplay', 'Imagine Dragons',
-    'Maroon 5', 'Rihanna', 'Eminem', 'Kanye West', 'Beyoncé'
+    'Bruno Mars', 'Bad Bunny', 'The Weeknd', 'Rihanna', 'Taylor Swift',
+    'Justin Bieber', 'Lady Gaga', 'Coldplay', 'Billie Eilish', 'Drake',
+    'J Balvin', 'Ariana Grande', 'Ed Sheeran', 'David Guetta', 'Shakira',
+    'Kendrick Lamar', 'Maroon 5', 'Eminem', 'SZA', 'Calvin Harris'
   ];
   return popularArtists.slice(0, limit);
 }

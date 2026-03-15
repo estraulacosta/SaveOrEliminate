@@ -2,6 +2,48 @@ import type { Room, Player, GameConfig, Round, Vote, Song } from './types.js';
 import * as deezer from './deezer.js';
 
 const rooms = new Map<string, Room>();
+const globalYearSongsCache = new Map<number, Song[]>();
+
+function normalizeSongKey(song: Song): string {
+  const normalizedTitle = song.name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const normalizedArtist = song.artist
+    .toLowerCase()
+    .replace(/feat\.?/g, ',')
+    .replace(/ft\.?/g, ',')
+    .replace(/ x /g, ',')
+    .replace(/&/g, ',')
+    .split(',')
+    .map((part) => part.replace(/[^a-z0-9]+/g, ' ').trim())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+  return `${normalizedTitle}::${normalizedArtist}`;
+}
+
+function dedupeSongs(songs: Song[]): Song[] {
+  const seen = new Set<string>();
+  const unique: Song[] = [];
+  for (const song of songs) {
+    const key = normalizeSongKey(song);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(song);
+  }
+  return unique;
+}
+
+function shuffleSongs(songs: Song[]): Song[] {
+  return [...songs].sort(() => Math.random() - 0.5);
+}
+
+function pickUniqueSongs(songs: Song[], count: number): Song[] {
+  return dedupeSongs(songs).slice(0, count);
+}
 
 function generateRoomId(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -60,10 +102,10 @@ export function removePlayer(roomId: string, playerId: string): boolean {
   const room = rooms.get(roomId);
   if (!room) return false;
   
-  room.players = room.players.filter(p => p.id !== playerId);
+  room.players = room.players.filter((p: Player) => p.id !== playerId);
   
   // Si sale el host, asignar a otro
-  if (room.players.length > 0 && !room.players.some(p => p.isHost)) {
+  if (room.players.length > 0 && !room.players.some((p: Player) => p.isHost)) {
     room.players[0].isHost = true;
   }
   
@@ -75,6 +117,20 @@ export function removePlayer(roomId: string, playerId: string): boolean {
   return true;
 }
 
+export function findAndRemovePlayerFromAllRooms(playerId: string): { roomId: string; room: Room; playerName: string } | null {
+  for (const [roomId, room] of rooms.entries()) {
+    const player = room.players.find((p: Player) => p.id === playerId);
+    if (player) {
+      removePlayer(roomId, playerId);
+      return { roomId, room, playerName: player.name };
+    }
+  }
+  return null;
+}
+
+// ============================================================
+// Carga de canciones para modos que NO son year
+// ============================================================
 async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
   try {
     switch (config.selectionType) {
@@ -87,18 +143,6 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
       case 'artist':
         if (config.artist) {
           return await deezer.searchByArtist(config.artist, 100);
-        }
-        break;
-        
-      case 'year':
-        if (config.yearRange) {
-          const allSongs: Song[] = [];
-          const { start, end } = config.yearRange;
-          for (let year = start; year <= end; year++) {
-            const songs = await deezer.searchByYear(year, 50);
-            allSongs.push(...songs);
-          }
-          return allSongs;
         }
         break;
         
@@ -135,7 +179,7 @@ async function fetchSongsForVersus(type: string, value: string): Promise<Song[]>
     case 'artist':
       return await deezer.searchByArtist(value, 50);
     case 'year':
-      return await deezer.searchByYear(parseInt(value), 50);
+      return await deezer.searchByYear(parseInt(value), 25);
     case 'genre':
       return await deezer.searchByGenre(value, 50);
     case 'decade':
@@ -150,7 +194,7 @@ function calculateTotalRounds(config: GameConfig, totalSongs: number): number {
   switch (config.selectionType) {
     case 'genre':
     case 'artist':
-      return 20; // 20 rondas fijas
+      return 20;
       
     case 'year':
       if (config.yearRange) {
@@ -165,143 +209,142 @@ function calculateTotalRounds(config: GameConfig, totalSongs: number): number {
       return 5;
       
     case 'versus':
-      return 20; // 20 rondas de versus
+      return 20;
       
     default:
       return Math.min(20, Math.floor(totalSongs / config.songsPerRound));
   }
 }
 
-export async function startGame(roomId: string, config: GameConfig): Promise<boolean> {
+// ============================================================
+// Inicio del juego: carga diferenciada por modo
+// ============================================================
+
+/**
+ * Callback de progreso para modo año: se llama con cada año completado.
+ * loadedYears: cuántos ya se cargaron, totalYears: cuántos hay en total.
+ */
+export type LoadingProgressCallback = (loadedYears: number, totalYears: number) => void;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function ensureYearSongsLoaded(room: Room, year: number): Promise<Song[]> {
+  const globalCached = globalYearSongsCache.get(year);
+  if (globalCached) {
+    if (!room.yearSongPool) room.yearSongPool = new Map<number, Song[]>();
+    const roomShuffled = shuffleSongs(globalCached);
+    room.yearSongPool.set(year, roomShuffled);
+    return roomShuffled;
+  }
+
+  if (!room.yearSongPool) {
+    room.yearSongPool = new Map<number, Song[]>();
+  }
+
+  const cached = room.yearSongPool.get(year);
+  if (cached) return cached;
+
+  if (!room.yearSongLoadPromises) {
+    room.yearSongLoadPromises = new Map<number, Promise<Song[]>>();
+  }
+
+  const pending = room.yearSongLoadPromises.get(year);
+  if (pending) return pending;
+
+  const loader = (async () => {
+    const songsPerRound = room.gameConfig?.songsPerRound ?? 6;
+    const requestLimit = Math.max(40, songsPerRound * 8);
+    const songs = await deezer.searchByYear(year, requestLimit);
+    const canonical = dedupeSongs(
+      songs.filter(song => song.previewUrl !== null && song.releaseYear === year)
+    );
+    const roomShuffled = shuffleSongs(canonical);
+    room.yearSongPool!.set(year, roomShuffled);
+    globalYearSongsCache.set(year, canonical);
+    console.log(`[Year Mode] ${year}: ${roomShuffled.length} strict-year songs loaded`);
+    room.yearSongLoadPromises!.delete(year);
+    return roomShuffled;
+  })();
+
+  room.yearSongLoadPromises.set(year, loader);
+  return loader;
+}
+
+export async function startGame(
+  roomId: string,
+  config: GameConfig,
+  onProgress?: LoadingProgressCallback
+): Promise<boolean> {
   const room = rooms.get(roomId);
   if (!room || room.players.length < 1) return false;
   
   room.gameConfig = config;
   room.isGameStarted = true;
-  
-  // Para modo versus artista, cargar canciones de ambos artistas por separado
-  if (config.selectionType === 'versus' && config.versusConfig?.type === 'artist') {
-    console.log(`Starting versus mode with artists: ${config.versusConfig.option1} vs ${config.versusConfig.option2}`);
-    
-    const songs1 = await deezer.searchByArtist(config.versusConfig.option1, 100);
-    const songs2 = await deezer.searchByArtist(config.versusConfig.option2, 100);
-    
-    // Filtrar solo con preview
-    const songs1WithPreview = songs1.filter(song => song.previewUrl !== null);
-    const songs2WithPreview = songs2.filter(song => song.previewUrl !== null);
-    
-    console.log(`Artist 1 (${config.versusConfig.option1}): ${songs1WithPreview.length} songs with preview`);
-    console.log(`Artist 2 (${config.versusConfig.option2}): ${songs2WithPreview.length} songs with preview`);
-    
-    room.artistSongs = {
-      artist1: songs1WithPreview,
-      artist2: songs2WithPreview,
+
+  if (config.selectionType === 'year' && config.yearRange) {
+    // ---- Modo AÑO: arranque robusto (menos requests simultáneas) ----
+    const { start, end } = config.yearRange;
+    const totalYears = end - start + 1;
+    room.yearSongPool = new Map<number, Song[]>();
+    room.yearSongLoadPromises = new Map<number, Promise<Song[]>>();
+    room.currentYearIndex = 0;
+    room.totalRounds = totalYears;
+    room.allSongs = []; // No se usa en modo año
+
+    let loadedYears = 0;
+    const countedYears = new Set<number>();
+    const onYearLoaded = (year: number) => {
+      if (countedYears.has(year)) return;
+      countedYears.add(year);
+      loadedYears += 1;
+      if (onProgress) {
+        onProgress(loadedYears, totalYears);
+      }
     };
-    
-    room.usedSongsByArtist = {
-      artist1: new Set(),
-      artist2: new Set(),
-    };
-    
-    // Total rounds es el mínimo de canciones disponibles de ambos artistas, máximo 20
-    room.totalRounds = Math.min(20, Math.min(songs1WithPreview.length, songs2WithPreview.length));
-    console.log(`Total rounds for versus: ${room.totalRounds}`);
-  }
-  // Para modo versus año, cargar canciones de ambos años por separado
-  else if (config.selectionType === 'versus' && config.versusConfig?.type === 'year') {
-    console.log(`Starting versus mode with years: ${config.versusConfig.option1} vs ${config.versusConfig.option2}`);
-    
-    const year1 = parseInt(config.versusConfig.option1);
-    const year2 = parseInt(config.versusConfig.option2);
-    
-    const songs1 = await deezer.searchByYear(year1, 100);
-    const songs2 = await deezer.searchByYear(year2, 100);
-    
-    // Filtrar solo con preview
-    const songs1WithPreview = songs1.filter(song => song.previewUrl !== null);
-    const songs2WithPreview = songs2.filter(song => song.previewUrl !== null);
-    
-    console.log(`Year 1 (${year1}): ${songs1WithPreview.length} songs with preview`);
-    console.log(`Year 2 (${year2}): ${songs2WithPreview.length} songs with preview`);
-    
-    room.yearSongs = {
-      year1: songs1WithPreview,
-      year2: songs2WithPreview,
-    };
-    
-    room.usedSongsByYear = {
-      year1: new Set(),
-      year2: new Set(),
-    };
-    
-    // Total rounds es el mínimo de canciones disponibles de ambos años, máximo 20
-    room.totalRounds = Math.min(20, Math.min(songs1WithPreview.length, songs2WithPreview.length));
-    console.log(`Total rounds for versus year: ${room.totalRounds}`);
-  }
-  // Para modo versus género, cargar canciones de ambos géneros por separado
-  else if (config.selectionType === 'versus' && config.versusConfig?.type === 'genre') {
-    console.log(`Starting versus mode with genres: ${config.versusConfig.option1} vs ${config.versusConfig.option2}`);
-    
-    const songs1 = await deezer.searchByGenre(config.versusConfig.option1, 100);
-    const songs2 = await deezer.searchByGenre(config.versusConfig.option2, 100);
-    
-    // Filtrar solo con preview
-    const songs1WithPreview = songs1.filter(song => song.previewUrl !== null);
-    const songs2WithPreview = songs2.filter(song => song.previewUrl !== null);
-    
-    console.log(`Genre 1 (${config.versusConfig.option1}): ${songs1WithPreview.length} songs with preview`);
-    console.log(`Genre 2 (${config.versusConfig.option2}): ${songs2WithPreview.length} songs with preview`);
-    
-    room.genreSongs = {
-      genre1: songs1WithPreview,
-      genre2: songs2WithPreview,
-    };
-    
-    room.usedSongsByGenre = {
-      genre1: new Set(),
-      genre2: new Set(),
-    };
-    
-    // Total rounds es el mínimo de canciones disponibles de ambos géneros, máximo 20
-    room.totalRounds = Math.min(20, Math.min(songs1WithPreview.length, songs2WithPreview.length));
-    console.log(`Total rounds for versus genre: ${room.totalRounds}`);
-  }
-  // Para modo versus década, cargar canciones de ambas décadas por separado
-  else if (config.selectionType === 'versus' && config.versusConfig?.type === 'decade') {
-    console.log(`Starting versus mode with decades: ${config.versusConfig.option1} vs ${config.versusConfig.option2}`);
-    
-    const decade1 = parseInt(config.versusConfig.option1);
-    const decade2 = parseInt(config.versusConfig.option2);
-    
-    const songs1 = await deezer.searchByDecade(decade1, decade1 + 9, 100);
-    const songs2 = await deezer.searchByDecade(decade2, decade2 + 9, 100);
-    
-    // Filtrar solo con preview
-    const songs1WithPreview = songs1.filter(song => song.previewUrl !== null);
-    const songs2WithPreview = songs2.filter(song => song.previewUrl !== null);
-    
-    console.log(`Decade 1 (${decade1}s): ${songs1WithPreview.length} songs with preview`);
-    console.log(`Decade 2 (${decade2}s): ${songs2WithPreview.length} songs with preview`);
-    
-    room.decadeSongs = {
-      decade1: songs1WithPreview,
-      decade2: songs2WithPreview,
-    };
-    
-    room.usedSongsByDecade = {
-      decade1: new Set(),
-      decade2: new Set(),
-    };
-    
-    // Total rounds es el mínimo de canciones disponibles de ambas décadas, máximo 20
-    room.totalRounds = Math.min(20, Math.min(songs1WithPreview.length, songs2WithPreview.length));
-    console.log(`Total rounds for versus decade: ${room.totalRounds}`);
+
+    const allYears = Array.from({ length: totalYears }, (_, i) => start + i);
+
+    // 1) Buscar primer año jugable de forma secuencial (evita 403 por ráfagas)
+    let firstPlayableYear: number | null = null;
+
+    for (const year of allYears) {
+      const songs = await ensureYearSongsLoaded(room, year);
+      onYearLoaded(year);
+      if (songs.length >= config.songsPerRound) {
+        firstPlayableYear = year;
+        break;
+      }
+
+      // Pequeña pausa para no disparar rate-limit de Deezer
+      await sleep(120);
+    }
+
+    if (firstPlayableYear !== null) {
+      room.currentYearIndex = firstPlayableYear - start;
+      console.log(`[Year Mode] First playable year: ${firstPlayableYear}`);
+    }
+
+    // 2) Prefetch gradual en background (1 por vez, con pausa)
+    const firstYearToPrefetch = start + (room.currentYearIndex ?? 0) + 1;
+    void (async () => {
+      for (let year = firstYearToPrefetch; year <= end; year++) {
+        if (countedYears.has(year)) continue;
+        try {
+          await ensureYearSongsLoaded(room, year);
+          onYearLoaded(year);
+        } catch {
+          onYearLoaded(year);
+        }
+        await sleep(180);
+      }
+    })();
+
   } else {
-    // Para otros modos, usar la lógica existente
+    // ---- Otros modos: pool global ----
     const allSongs = await fetchSongsForConfig(config);
     console.log(`Fetched ${allSongs.length} songs for config`);
-    
-    // Filtrar solo con preview
     room.allSongs = allSongs.filter(song => song.previewUrl !== null);
     console.log(`Songs with preview: ${room.allSongs.length}/${allSongs.length}`);
     room.totalRounds = calculateTotalRounds(config, room.allSongs.length);
@@ -314,161 +357,49 @@ export async function generateRound(roomId: string): Promise<Round | null> {
   const room = rooms.get(roomId);
   if (!room || !room.gameConfig) return null;
   
-  const { selectionType, yearRange, decadeRange, versusConfig } = room.gameConfig;
+  const { songsPerRound, selectionType, yearRange, decadeRange } = room.gameConfig;
   const roundNumber = room.currentRound ? room.currentRound.roundNumber + 1 : 1;
   
-  let selectedSongs: Song[] = [];
+  let availableSongs: Song[];
   
-  // Modo versus artista: 1 canción de cada artista
-  if (selectionType === 'versus' && versusConfig?.type === 'artist' && room.artistSongs && room.usedSongsByArtist) {
-    console.log(`[Ronda ${roundNumber}] Generating versus round for artists`);
-    
-    // Obtener canciones disponibles (no usadas)
-    const available1 = room.artistSongs.artist1.filter(s => !room.usedSongsByArtist!.artist1.has(s.id));
-    const available2 = room.artistSongs.artist2.filter(s => !room.usedSongsByArtist!.artist2.has(s.id));
-    
-    if (available1.length === 0 || available2.length === 0) {
-      console.log(`No more songs available. Artist 1: ${available1.length}, Artist 2: ${available2.length}`);
-      return null;
-    }
-    
-    // Seleccionar aleatoriamente 1 de cada artista
-    const song1 = available1[Math.floor(Math.random() * available1.length)];
-    const song2 = available2[Math.floor(Math.random() * available2.length)];
-    
-    // Marcar como usadas
-    room.usedSongsByArtist.artist1.add(song1.id);
-    room.usedSongsByArtist.artist2.add(song2.id);
-    
-    selectedSongs = [song1, song2];
-    console.log(`[Ronda ${roundNumber}] Selected: ${song1.artist} - ${song1.name} vs ${song2.artist} - ${song2.name}`);
-  }
-  // Modo versus año: 1 canción de cada año
-  else if (selectionType === 'versus' && versusConfig?.type === 'year' && room.yearSongs && room.usedSongsByYear) {
-    console.log(`[Ronda ${roundNumber}] Generating versus round for years`);
-    
-    // Obtener canciones disponibles (no usadas)
-    const available1 = room.yearSongs.year1.filter(s => !room.usedSongsByYear!.year1.has(s.id));
-    const available2 = room.yearSongs.year2.filter(s => !room.usedSongsByYear!.year2.has(s.id));
-    
-    if (available1.length === 0 || available2.length === 0) {
-      console.log(`No more songs available. Year 1: ${available1.length}, Year 2: ${available2.length}`);
-      return null;
-    }
-    
-    // Seleccionar aleatoriamente 1 de cada año
-    const song1 = available1[Math.floor(Math.random() * available1.length)];
-    const song2 = available2[Math.floor(Math.random() * available2.length)];
-    
-    // Marcar como usadas
-    room.usedSongsByYear.year1.add(song1.id);
-    room.usedSongsByYear.year2.add(song2.id);
-    
-    selectedSongs = [song1, song2];
-    console.log(`[Ronda ${roundNumber}] Selected: ${song1.name} (${versusConfig.option1}) vs ${song2.name} (${versusConfig.option2})`);
-  }
-  // Modo versus género: 1 canción de cada género
-  else if (selectionType === 'versus' && versusConfig?.type === 'genre' && room.genreSongs && room.usedSongsByGenre) {
-    console.log(`[Ronda ${roundNumber}] Generating versus round for genres`);
-    
-    // Obtener canciones disponibles (no usadas)
-    const available1 = room.genreSongs.genre1.filter(s => !room.usedSongsByGenre!.genre1.has(s.id));
-    const available2 = room.genreSongs.genre2.filter(s => !room.usedSongsByGenre!.genre2.has(s.id));
-    
-    if (available1.length === 0 || available2.length === 0) {
-      console.log(`No more songs available. Genre 1: ${available1.length}, Genre 2: ${available2.length}`);
-      return null;
-    }
-    
-    // Seleccionar aleatoriamente 1 de cada género
-    const song1 = available1[Math.floor(Math.random() * available1.length)];
-    const song2 = available2[Math.floor(Math.random() * available2.length)];
-    
-    // Marcar como usadas
-    room.usedSongsByGenre.genre1.add(song1.id);
-    room.usedSongsByGenre.genre2.add(song2.id);
-    
-    selectedSongs = [song1, song2];
-    console.log(`[Ronda ${roundNumber}] Selected: ${song1.name} (${versusConfig.option1}) vs ${song2.name} (${versusConfig.option2})`);
-  }
-  // Modo versus década: 1 canción de cada década
-  else if (selectionType === 'versus' && versusConfig?.type === 'decade' && room.decadeSongs && room.usedSongsByDecade) {
-    console.log(`[Ronda ${roundNumber}] Generating versus round for decades`);
-    
-    // Obtener canciones disponibles (no usadas)
-    const available1 = room.decadeSongs.decade1.filter(s => !room.usedSongsByDecade!.decade1.has(s.id));
-    const available2 = room.decadeSongs.decade2.filter(s => !room.usedSongsByDecade!.decade2.has(s.id));
-    
-    if (available1.length === 0 || available2.length === 0) {
-      console.log(`No more songs available. Decade 1: ${available1.length}, Decade 2: ${available2.length}`);
-      return null;
-    }
-    
-    // Seleccionar aleatoriamente 1 de cada década
-    const song1 = available1[Math.floor(Math.random() * available1.length)];
-    const song2 = available2[Math.floor(Math.random() * available2.length)];
-    
-    // Marcar como usadas
-    room.usedSongsByDecade.decade1.add(song1.id);
-    room.usedSongsByDecade.decade2.add(song2.id);
-    
-    selectedSongs = [song1, song2];
-    console.log(`[Ronda ${roundNumber}] Selected: ${song1.name} (${versusConfig.option1}s) vs ${song2.name} (${versusConfig.option2}s)`);
-  }
-  // Modo year
-  else if (selectionType === 'year' && yearRange) {
+  // Para year mode, obtener SOLO las canciones del año actual de esa ronda
+  if (selectionType === 'year' && yearRange) {
     const currentYear = yearRange.start + (roundNumber - 1);
     if (currentYear > yearRange.end) {
       console.log(`End of year range. Current year ${currentYear} exceeds end ${yearRange.end}`);
-      return null;
+      return null; // Ya pasamos el rango de años
     }
     console.log(`[Ronda ${roundNumber}] Fetching songs for year ${currentYear}...`);
-    const availableSongs = await deezer.searchByYear(currentYear, 100);
+    availableSongs = await deezer.searchByYear(currentYear, 100);
     console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for year ${currentYear}`);
-    
-    if (availableSongs.length < room.gameConfig.songsPerRound) {
-      console.log(`Not enough songs: ${availableSongs.length} < ${room.gameConfig.songsPerRound}`);
-      return null;
-    }
-    
-    const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
-    selectedSongs = shuffled.slice(0, room.gameConfig.songsPerRound);
-  }
-  // Modo decade
+  } 
+  // Para decade mode, obtener SOLO las canciones de la década actual de esa ronda
   else if (selectionType === 'decade' && decadeRange) {
     const currentDecade = decadeRange.start + (roundNumber - 1) * 10;
     if (currentDecade > decadeRange.end) {
       console.log(`End of decade range. Current decade ${currentDecade} exceeds end ${decadeRange.end}`);
-      return null;
+      return null; // Ya pasamos el rango de décadas
     }
     console.log(`[Ronda ${roundNumber}] Fetching songs for decade ${currentDecade}s...`);
-    const availableSongs = await deezer.searchByDecade(currentDecade, currentDecade + 9, 100);
+    availableSongs = await deezer.searchByDecade(currentDecade, currentDecade + 9, 100);
     console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for decade ${currentDecade}s`);
-    
-    if (availableSongs.length < room.gameConfig.songsPerRound) {
-      console.log(`Not enough songs: ${availableSongs.length} < ${room.gameConfig.songsPerRound}`);
-      return null;
-    }
-    
-    const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
-    selectedSongs = shuffled.slice(0, room.gameConfig.songsPerRound);
   }
-  // Otros modos
   else {
-    const availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
-    
-    if (availableSongs.length < room.gameConfig.songsPerRound) {
-      console.log(`Not enough songs: ${availableSongs.length} < ${room.gameConfig.songsPerRound}`);
-      return null;
-    }
-    
-    const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
-    selectedSongs = shuffled.slice(0, room.gameConfig.songsPerRound);
-    
-    // Marcar como usadas (solo para no-year/decade modes)
-    if (selectionType !== 'year' && selectionType !== 'decade') {
-      selectedSongs.forEach(song => room.usedSongIds.add(song.id));
-    }
+    // Para otros modos, usar las canciones pre-cargadas
+    availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
+  }
+  
+  if (availableSongs.length < songsPerRound) {
+    console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
+    return null;
+  }
+  
+  const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
+  const selectedSongs = shuffled.slice(0, songsPerRound);
+  
+  // Marcar como usadas (solo para no-year modes)
+  if (selectionType !== 'year') {
+    selectedSongs.forEach(song => room.usedSongIds.add(song.id));
   }
   
   const round: Round = {
@@ -488,10 +419,7 @@ export function submitVote(roomId: string, playerId: string, songId: string): bo
   const room = rooms.get(roomId);
   if (!room || !room.currentRound) return false;
   
-  // Remover voto anterior del jugador
   room.currentRound.votes = room.currentRound.votes.filter(v => v.playerId !== playerId);
-  
-  // Agregar nuevo voto
   room.currentRound.votes.push({ playerId, songId });
   
   return true;
@@ -521,16 +449,11 @@ export function resetGame(roomId: string): boolean {
   room.currentRound = null;
   room.allSongs = [];
   room.usedSongIds.clear();
-  room.artistSongs = undefined;
-  room.usedSongsByArtist = undefined;
-  room.yearSongs = undefined;
-  room.usedSongsByYear = undefined;
-  room.genreSongs = undefined;
-  room.usedSongsByGenre = undefined;
-  room.decadeSongs = undefined;
-  room.usedSongsByDecade = undefined;
   room.totalRounds = 0;
   room.isGameStarted = false;
+  room.yearSongPool = undefined;
+  room.yearSongLoadPromises = undefined;
+  room.currentYearIndex = undefined;
   
   return true;
 }

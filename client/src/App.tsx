@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { socket } from './socket';
 import type { Room, Player, GameConfig, Round, Vote } from './types';
 import Home from './screens/Home';
 import EnterName from './screens/EnterName';
 import Lobby from './screens/Lobby';
 import GameModeSelect from './screens/GameModeSelect';
-import MusicTypeSelect from './screens/MusicTypeSelect';
-import SongsPerRoundSelect from './screens/SongsPerRoundSelect';
+import MusicSetupSelect from './screens/MusicSetupSelect';
 import GenreSelect from './screens/GenreSelect';
 import ArtistSelect from './screens/ArtistSelect';
 import YearSelect from './screens/YearSelect';
@@ -22,8 +21,7 @@ type Screen =
   | 'enter-name'
   | 'lobby'
   | 'game-mode-select'
-  | 'music-type-select'
-  | 'songs-per-round'
+  | 'music-setup-select'
   | 'genre-select'
   | 'artist-select'
   | 'year-select'
@@ -44,6 +42,9 @@ function App() {
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [totalRounds, setTotalRounds] = useState(0);
   const [votes, setVotes] = useState<Vote[]>([]);
+  const [loadingProgress, setLoadingProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isStartingGameRef = useRef(false);
 
   const navigateTo = (screen: Screen) => {
     setCurrentScreen(screen);
@@ -73,7 +74,12 @@ function App() {
       setRoom(updatedRoom);
     });
 
-    socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, versusInfo, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; versusInfo?: any; selectionType?: string }) => {
+    socket.on('player-left', ({ room, message }: { room: Room; message: string }) => {
+      setRoom(room);
+      console.log(message);
+    });
+
+    socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, selectionType, mode }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string; mode?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
       if (currentYear !== undefined) {
@@ -82,32 +88,35 @@ function App() {
       if (currentDecade !== undefined) {
         setGameConfig(prev => ({ ...prev, currentDecade }));
       }
-      if (versusInfo !== undefined) {
-        setGameConfig(prev => ({ ...prev, versusInfo }));
-      }
       if (selectionType !== undefined) {
         setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
+      }
+      if (mode !== undefined) {
+        setGameConfig(prev => ({ ...prev, mode: mode as any }));
       }
       setCurrentScreen('gameplay');
     });
 
+    socket.on('game-error', ({ message }: { message: string }) => {
+      isStartingGameRef.current = false;
+      setLoadingProgress(null);
+      setCurrentScreen('lobby');
+      setErrorMessage(message);
+    });
+
     socket.on('timer-started', () => {
-      if (currentRound) {
-        setCurrentRound({ ...currentRound, timerStarted: true });
-      }
+      setCurrentRound((prev) => (prev ? { ...prev, timerStarted: true } : prev));
     });
 
     socket.on('timer-paused', ({ isPaused }: { isPaused: boolean }) => {
-      if (currentRound) {
-        setCurrentRound({ ...currentRound, isPaused });
-      }
+      setCurrentRound((prev) => (prev ? { ...prev, isPaused } : prev));
     });
 
     socket.on('vote-submitted', ({ votes: newVotes }: { votes: Vote[]; players: Player[] }) => {
       setVotes(newVotes);
     });
 
-    socket.on('new-round', ({ round, totalRounds: total, currentYear, currentDecade, versusInfo, selectionType }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; versusInfo?: any; selectionType?: string }) => {
+    socket.on('new-round', ({ round, totalRounds: total, currentYear, currentDecade, selectionType, mode }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string; mode?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
       if (currentYear !== undefined) {
@@ -116,11 +125,11 @@ function App() {
       if (currentDecade !== undefined) {
         setGameConfig(prev => ({ ...prev, currentDecade }));
       }
-      if (versusInfo !== undefined) {
-        setGameConfig(prev => ({ ...prev, versusInfo }));
-      }
       if (selectionType !== undefined) {
         setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
+      }
+      if (mode !== undefined) {
+        setGameConfig(prev => ({ ...prev, mode: mode as any }));
       }
       setVotes([]);
       setCurrentScreen('gameplay');
@@ -131,6 +140,7 @@ function App() {
     });
 
     socket.on('game-reset', (updatedRoom: Room) => {
+      isStartingGameRef.current = false;
       setRoom(updatedRoom);
       setGameConfig({});
       setCurrentRound(null);
@@ -139,14 +149,17 @@ function App() {
     });
 
     socket.on('error', ({ message }: { message: string }) => {
-      alert(message);
+      setErrorMessage(message);
     });
 
     return () => {
       socket.off('room-created');
       socket.off('room-joined');
       socket.off('player-joined');
+      socket.off('player-left');
+      socket.off('game-loading');
       socket.off('game-started');
+      socket.off('game-error');
       socket.off('timer-started');
       socket.off('timer-paused');
       socket.off('vote-submitted');
@@ -155,7 +168,18 @@ function App() {
       socket.off('game-reset');
       socket.off('error');
     };
-  }, [currentRound]);
+  }, []);
+
+  // Detectar parámetro ?room= en URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const roomIdFromUrl = params.get('room');
+    if (roomIdFromUrl && roomIdFromUrl.length === 6) {
+      setPendingRoomId(roomIdFromUrl);
+      setCurrentScreen('enter-name');
+      setScreenHistory(['home', 'enter-name']);
+    }
+  }, []);
 
   const isHost = room?.players.find(p => p.id === socket.id)?.isHost || false;
 
@@ -196,35 +220,35 @@ function App() {
         return <GameModeSelect
           onSelect={(mode) => {
             setGameConfig({ ...gameConfig, mode });
-            navigateTo('music-type-select');
+            navigateTo('music-setup-select');
           }}
           onBack={goBack}
         />;
 
-      case 'music-type-select':
-        return <MusicTypeSelect
-          onSelect={(type) => {
-            setGameConfig({ ...gameConfig, selectionType: type });
-            // Versus va directo a versus-select sin pedir canciones por ronda
-            if (type === 'versus') {
+      case 'music-setup-select':
+        return <MusicSetupSelect
+          onSelectType={(type, songsPerRound) => {
+            const config = { 
+              ...gameConfig, 
+              selectionType: type,
+              songsPerRound: songsPerRound || gameConfig.songsPerRound || 3
+            };
+            if (type === 'genre') {
+              setGameConfig(config);
+              navigateTo('genre-select');
+            } else if (type === 'artist') {
+              setGameConfig(config);
+              navigateTo('artist-select');
+            } else if (type === 'year') {
+              setGameConfig(config);
+              navigateTo('year-select');
+            } else if (type === 'decade') {
+              setGameConfig(config);
+              navigateTo('decade-select');
+            } else if (type === 'versus') {
+              setGameConfig(config);
               navigateTo('versus-select');
-            } else {
-              navigateTo('songs-per-round');
             }
-          }}
-          onBack={goBack}
-        />;
-
-      case 'songs-per-round':
-        return <SongsPerRoundSelect
-          onSelect={(count) => {
-            setGameConfig({ ...gameConfig, songsPerRound: count });
-            const type = gameConfig.selectionType;
-            if (type === 'genre') navigateTo('genre-select');
-            else if (type === 'artist') navigateTo('artist-select');
-            else if (type === 'year') navigateTo('year-select');
-            else if (type === 'decade') navigateTo('decade-select');
-            else if (type === 'versus') navigateTo('versus-select');
           }}
           onBack={goBack}
         />;
@@ -269,19 +293,18 @@ function App() {
           onBack={goBack}
         />;
 
+      case 'loading':
+        return <LoadingScreen progress={loadingProgress} onBack={goBack} />;
+
       case 'versus-select':
         return <VersusSelect
           onSelect={(versusConfig) => {
-            // En versus siempre son 2 canciones por ronda (1v1)
-            const config = { ...gameConfig, versusConfig, songsPerRound: 2 } as GameConfig;
+            const config = { ...gameConfig, versusConfig } as GameConfig;
             navigateTo('loading');
             socket.emit('start-game', { roomId: room!.id, config });
           }}
           onBack={goBack}
         />;
-
-      case 'loading':
-        return <LoadingScreen onBack={goBack} />;
 
       case 'gameplay':
         return <GamePlay
@@ -293,8 +316,8 @@ function App() {
           selectionType={gameConfig.selectionType}
           currentYear={gameConfig.currentYear as number | undefined}
           currentDecade={gameConfig.currentDecade as number | undefined}
-          versusInfo={gameConfig.versusInfo as any}
           onTimerEnd={() => navigateTo('vote-results')}
+          onBack={goBack}
         />;
 
       case 'vote-results':
@@ -305,6 +328,7 @@ function App() {
           isHost={isHost}
           roomId={room!.id}
           onNextRound={() => socket.emit('next-round', { roomId: room!.id })}
+          onEndGame={() => socket.emit('end-game', { roomId: room!.id })}
         />;
 
       case 'game-finished':
@@ -322,6 +346,42 @@ function App() {
   return (
     <div className="container">
       {renderScreen()}
+      
+      {errorMessage && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(30, 25, 33, 0.98)',
+          border: '2px solid #FA5649',
+          borderRadius: '16px',
+          padding: '2rem',
+          maxWidth: '90%',
+          zIndex: 9999,
+          backdropFilter: 'blur(5px)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 0 30px rgba(250, 86, 73, 0.3)'
+        }}>
+          <h3 style={{ color: '#FA5649', marginBottom: '1rem', marginTop: 0, fontSize: '1.3rem' }}>Error</h3>
+          <p style={{ color: '#FBF4FE', marginBottom: '1.5rem', fontSize: '0.95rem', lineHeight: '1.4' }}>{errorMessage}</p>
+          <button 
+            onClick={() => setErrorMessage(null)}
+            style={{
+              background: '#FA5649',
+              color: 'white',
+              border: 'none',
+              padding: '0.8rem 1.5rem',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.95rem',
+              fontWeight: 'bold',
+              width: '100%'
+            }}
+          >
+            Aceptar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
