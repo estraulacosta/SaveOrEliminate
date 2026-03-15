@@ -34,58 +34,68 @@ export default function GenreSelect({ onSelect, onBack }: GenreSelectProps) {
   return (
     <>
       <Header onBack={onBack} showBackButton={!!onBack} />
-      <h1>Selecciona un Género</h1>
-      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+      <div className="selector-container">
+        <h1 className="selector-title">SELECCIONA UN GÉNERO</h1>
         <input
           type="text"
           placeholder="Buscar género..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          className="selector-input"
           style={{
-            width: '100%',
-            maxWidth: '500px',
-            padding: '15px',
-            fontSize: '1rem',
             borderRadius: '10px',
             border: '2px solid rgba(255, 255, 255, 0.3)',
             background: 'rgba(255, 255, 255, 0.1)',
             color: 'white',
-            marginBottom: '30px',
           }}
         />
 
-      {displayGenres.length > 0 ? (
-        <>
-          <p style={{ opacity: 0.7, marginBottom: '20px' }}>
-            {searchQuery ? `${searchResults.length} resultados` : 'Top 20 géneros populares'}
+        {displayGenres.length > 0 ? (
+          <>
+            <p className="selector-subtitle" style={{ opacity: 0.7, textAlign: 'center' }}>
+              {searchQuery ? `${searchResults.length} resultados` : 'Top 20 géneros populares'}
+            </p>
+            <div className="selector-grid">
+              {displayGenres.map((genre) => (
+                <button
+                  type="button"
+                  key={genre}
+                  onClick={() => onSelect(genre)}
+                  className="selector-item secondary"
+                  style={{
+                    background: 'rgba(128, 22, 199, 0.1)',
+                    border: '2px solid rgba(128, 22, 199, 0.2)',
+                    borderRadius: '16px',
+                    color: 'white',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s',
+                    textTransform: 'capitalize',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(128, 22, 199, 0.5)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(128, 22, 199, 0.15)';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-3px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(128, 22, 199, 0.2)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(128, 22, 199, 0.1)';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+                  }}
+                >
+                  {genre}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p style={{ opacity: 0.7, textAlign: 'center' }}>
+            {searchQuery ? 'No se encontraron géneros' : 'Cargando...'}
           </p>
-          <div className="grid">
-            {displayGenres.map((genre) => (
-              <button
-                key={genre}
-                onClick={() => onSelect(genre)}
-                style={{
-                  padding: '20px',
-                  fontSize: '1.1rem',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '2px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '10px',
-                  color: 'white',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s',
-                  textTransform: 'capitalize',
-                }}
-              >
-                {genre}
-              </button>
-            ))}
-          </div>
-        </>
-      ) : (
-        <p style={{ opacity: 0.7 }}>
-          {searchQuery ? 'No se encontraron géneros' : 'Cargando...'}
-        </p>
-      )}
+        )}
       </div>
     </>
   );

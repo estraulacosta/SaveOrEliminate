@@ -2,6 +2,48 @@ import type { Room, Player, GameConfig, Round, Vote, Song } from './types.js';
 import * as deezer from './deezer.js';
 
 const rooms = new Map<string, Room>();
+const globalYearSongsCache = new Map<number, Song[]>();
+
+function normalizeSongKey(song: Song): string {
+  const normalizedTitle = song.name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const normalizedArtist = song.artist
+    .toLowerCase()
+    .replace(/feat\.?/g, ',')
+    .replace(/ft\.?/g, ',')
+    .replace(/ x /g, ',')
+    .replace(/&/g, ',')
+    .split(',')
+    .map((part) => part.replace(/[^a-z0-9]+/g, ' ').trim())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+  return `${normalizedTitle}::${normalizedArtist}`;
+}
+
+function dedupeSongs(songs: Song[]): Song[] {
+  const seen = new Set<string>();
+  const unique: Song[] = [];
+  for (const song of songs) {
+    const key = normalizeSongKey(song);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(song);
+  }
+  return unique;
+}
+
+function shuffleSongs(songs: Song[]): Song[] {
+  return [...songs].sort(() => Math.random() - 0.5);
+}
+
+function pickUniqueSongs(songs: Song[], count: number): Song[] {
+  return dedupeSongs(songs).slice(0, count);
+}
 
 function generateRoomId(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -60,10 +102,10 @@ export function removePlayer(roomId: string, playerId: string): boolean {
   const room = rooms.get(roomId);
   if (!room) return false;
   
-  room.players = room.players.filter(p => p.id !== playerId);
+  room.players = room.players.filter((p: Player) => p.id !== playerId);
   
   // Si sale el host, asignar a otro
-  if (room.players.length > 0 && !room.players.some(p => p.isHost)) {
+  if (room.players.length > 0 && !room.players.some((p: Player) => p.isHost)) {
     room.players[0].isHost = true;
   }
   
@@ -75,6 +117,20 @@ export function removePlayer(roomId: string, playerId: string): boolean {
   return true;
 }
 
+export function findAndRemovePlayerFromAllRooms(playerId: string): { roomId: string; room: Room; playerName: string } | null {
+  for (const [roomId, room] of rooms.entries()) {
+    const player = room.players.find((p: Player) => p.id === playerId);
+    if (player) {
+      removePlayer(roomId, playerId);
+      return { roomId, room, playerName: player.name };
+    }
+  }
+  return null;
+}
+
+// ============================================================
+// Carga de canciones para modos que NO son year
+// ============================================================
 async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
   try {
     switch (config.selectionType) {
@@ -87,18 +143,6 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
       case 'artist':
         if (config.artist) {
           return await deezer.searchByArtist(config.artist, 100);
-        }
-        break;
-        
-      case 'year':
-        if (config.yearRange) {
-          const allSongs: Song[] = [];
-          const { start, end } = config.yearRange;
-          for (let year = start; year <= end; year++) {
-            const songs = await deezer.searchByYear(year, 50);
-            allSongs.push(...songs);
-          }
-          return allSongs;
         }
         break;
         
@@ -135,7 +179,7 @@ async function fetchSongsForVersus(type: string, value: string): Promise<Song[]>
     case 'artist':
       return await deezer.searchByArtist(value, 50);
     case 'year':
-      return await deezer.searchByYear(parseInt(value), 50);
+      return await deezer.searchByYear(parseInt(value), 25);
     case 'genre':
       return await deezer.searchByGenre(value, 50);
     case 'decade':
@@ -150,7 +194,7 @@ function calculateTotalRounds(config: GameConfig, totalSongs: number): number {
   switch (config.selectionType) {
     case 'genre':
     case 'artist':
-      return 20; // 20 rondas fijas
+      return 20;
       
     case 'year':
       if (config.yearRange) {
@@ -165,31 +209,146 @@ function calculateTotalRounds(config: GameConfig, totalSongs: number): number {
       return 5;
       
     case 'versus':
-      return 20; // 20 rondas de versus
+      return 20;
       
     default:
       return Math.min(20, Math.floor(totalSongs / config.songsPerRound));
   }
 }
 
-export async function startGame(roomId: string, config: GameConfig): Promise<boolean> {
+// ============================================================
+// Inicio del juego: carga diferenciada por modo
+// ============================================================
+
+/**
+ * Callback de progreso para modo año: se llama con cada año completado.
+ * loadedYears: cuántos ya se cargaron, totalYears: cuántos hay en total.
+ */
+export type LoadingProgressCallback = (loadedYears: number, totalYears: number) => void;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function ensureYearSongsLoaded(room: Room, year: number): Promise<Song[]> {
+  const globalCached = globalYearSongsCache.get(year);
+  if (globalCached) {
+    if (!room.yearSongPool) room.yearSongPool = new Map<number, Song[]>();
+    const roomShuffled = shuffleSongs(globalCached);
+    room.yearSongPool.set(year, roomShuffled);
+    return roomShuffled;
+  }
+
+  if (!room.yearSongPool) {
+    room.yearSongPool = new Map<number, Song[]>();
+  }
+
+  const cached = room.yearSongPool.get(year);
+  if (cached) return cached;
+
+  if (!room.yearSongLoadPromises) {
+    room.yearSongLoadPromises = new Map<number, Promise<Song[]>>();
+  }
+
+  const pending = room.yearSongLoadPromises.get(year);
+  if (pending) return pending;
+
+  const loader = (async () => {
+    const songsPerRound = room.gameConfig?.songsPerRound ?? 6;
+    const requestLimit = Math.max(40, songsPerRound * 8);
+    const songs = await deezer.searchByYear(year, requestLimit);
+    const canonical = dedupeSongs(
+      songs.filter(song => song.previewUrl !== null && song.releaseYear === year)
+    );
+    const roomShuffled = shuffleSongs(canonical);
+    room.yearSongPool!.set(year, roomShuffled);
+    globalYearSongsCache.set(year, canonical);
+    console.log(`[Year Mode] ${year}: ${roomShuffled.length} strict-year songs loaded`);
+    room.yearSongLoadPromises!.delete(year);
+    return roomShuffled;
+  })();
+
+  room.yearSongLoadPromises.set(year, loader);
+  return loader;
+}
+
+export async function startGame(
+  roomId: string,
+  config: GameConfig,
+  onProgress?: LoadingProgressCallback
+): Promise<boolean> {
   const room = rooms.get(roomId);
   if (!room || room.players.length < 1) return false;
   
   room.gameConfig = config;
   room.isGameStarted = true;
-  
-  // Fetch todas las canciones
-  const allSongs = await fetchSongsForConfig(config);
-  
-  console.log(`Fetched ${allSongs.length} songs for config`);
-  
-  // Filtrar solo con preview
-  room.allSongs = allSongs.filter(song => song.previewUrl !== null);
-  
-  console.log(`Songs with preview: ${room.allSongs.length}/${allSongs.length}`);
-  
-  room.totalRounds = calculateTotalRounds(config, room.allSongs.length);
+
+  if (config.selectionType === 'year' && config.yearRange) {
+    // ---- Modo AÑO: arranque robusto (menos requests simultáneas) ----
+    const { start, end } = config.yearRange;
+    const totalYears = end - start + 1;
+    room.yearSongPool = new Map<number, Song[]>();
+    room.yearSongLoadPromises = new Map<number, Promise<Song[]>>();
+    room.currentYearIndex = 0;
+    room.totalRounds = totalYears;
+    room.allSongs = []; // No se usa en modo año
+
+    let loadedYears = 0;
+    const countedYears = new Set<number>();
+    const onYearLoaded = (year: number) => {
+      if (countedYears.has(year)) return;
+      countedYears.add(year);
+      loadedYears += 1;
+      if (onProgress) {
+        onProgress(loadedYears, totalYears);
+      }
+    };
+
+    const allYears = Array.from({ length: totalYears }, (_, i) => start + i);
+
+    // 1) Buscar primer año jugable de forma secuencial (evita 403 por ráfagas)
+    let firstPlayableYear: number | null = null;
+
+    for (const year of allYears) {
+      const songs = await ensureYearSongsLoaded(room, year);
+      onYearLoaded(year);
+      if (songs.length >= config.songsPerRound) {
+        firstPlayableYear = year;
+        break;
+      }
+
+      // Pequeña pausa para no disparar rate-limit de Deezer
+      await sleep(120);
+    }
+
+    if (firstPlayableYear !== null) {
+      room.currentYearIndex = firstPlayableYear - start;
+      console.log(`[Year Mode] First playable year: ${firstPlayableYear}`);
+    }
+
+    // 2) Prefetch gradual en background (1 por vez, con pausa)
+    const firstYearToPrefetch = start + (room.currentYearIndex ?? 0) + 1;
+    void (async () => {
+      for (let year = firstYearToPrefetch; year <= end; year++) {
+        if (countedYears.has(year)) continue;
+        try {
+          await ensureYearSongsLoaded(room, year);
+          onYearLoaded(year);
+        } catch {
+          onYearLoaded(year);
+        }
+        await sleep(180);
+      }
+    })();
+
+  } else {
+    // ---- Otros modos: pool global ----
+    const allSongs = await fetchSongsForConfig(config);
+    console.log(`Fetched ${allSongs.length} songs for config`);
+    room.allSongs = allSongs.filter(song => song.previewUrl !== null);
+    console.log(`Songs with preview: ${room.allSongs.length}/${allSongs.length}`);
+    room.totalRounds = calculateTotalRounds(config, room.allSongs.length);
+  }
   
   return true;
 }
@@ -235,7 +394,6 @@ export async function generateRound(roomId: string): Promise<Round | null> {
     return null;
   }
   
-  // Seleccionar canciones aleatorias
   const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
   const selectedSongs = shuffled.slice(0, songsPerRound);
   
@@ -261,10 +419,7 @@ export function submitVote(roomId: string, playerId: string, songId: string): bo
   const room = rooms.get(roomId);
   if (!room || !room.currentRound) return false;
   
-  // Remover voto anterior del jugador
   room.currentRound.votes = room.currentRound.votes.filter(v => v.playerId !== playerId);
-  
-  // Agregar nuevo voto
   room.currentRound.votes.push({ playerId, songId });
   
   return true;
@@ -296,6 +451,9 @@ export function resetGame(roomId: string): boolean {
   room.usedSongIds.clear();
   room.totalRounds = 0;
   room.isGameStarted = false;
+  room.yearSongPool = undefined;
+  room.yearSongLoadPromises = undefined;
+  room.currentYearIndex = undefined;
   
   return true;
 }

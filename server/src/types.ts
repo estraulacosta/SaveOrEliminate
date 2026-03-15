@@ -5,6 +5,7 @@ export interface Song {
   previewUrl: string | null;
   albumArt: string;
   spotifyUrl: string;
+  releaseYear?: number;
 }
 
 export interface Player {
@@ -44,6 +45,7 @@ export interface Round {
   votes: Vote[];
   isPaused: boolean;
   timerStarted: boolean;
+  yearLabel?: string; // Solo para modo por año, ej: "1985"
 }
 
 export interface Room {
@@ -51,9 +53,13 @@ export interface Room {
   players: Player[];
   gameConfig: GameConfig | null;
   currentRound: Round | null;
-  allSongs: Song[]; // Pool de canciones para toda la partida
+  allSongs: Song[]; // Pool de canciones para toda la partida (modos no-año)
   usedSongIds: Set<string>; // IDs de canciones ya usadas
   totalRounds: number;
   isGameStarted: boolean;
   createdAt: number;
+  // Modo año: pool pre-cargado por año { "1985": Song[], "1986": Song[], ... }
+  yearSongPool?: Map<number, Song[]>;
+  yearSongLoadPromises?: Map<number, Promise<Song[]>>;
+  currentYearIndex?: number; // índice del año actual en el modo año
 }

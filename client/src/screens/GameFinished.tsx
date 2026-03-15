@@ -15,7 +15,7 @@ export default function GameFinished({ isHost, onPlayAgain }: GameFinishedProps)
         </p>
         
         {isHost && (
-          <button className="primary" onClick={onPlayAgain}>
+          <button type="button" className="primary" onClick={onPlayAgain}>
             🔄 Jugar de Nuevo
           </button>
         )}

@@ -1,106 +1,89 @@
 import { useState, useEffect } from 'react';
-import '../App.css';
 import Header from '../components/Header';
+import { Loader, Music } from 'lucide-react';
 
 interface LoadingScreenProps {
   onBack?: () => void;
+  progress?: { loaded: number; total: number } | null;
 }
 
-export default function LoadingScreen({ onBack }: LoadingScreenProps) {
-  const [progress, setProgress] = useState(0);
+export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) {
+  const [fakeProgress, setFakeProgress] = useState(0);
 
   useEffect(() => {
-    // Simular progreso de carga - acelera al principio y se ralentiza
+    if (progress) return; // Don't use fake progress if real progress is provided
+
     const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev < 40) return prev + Math.random() * 15;
-        if (prev < 80) return prev + Math.random() * 8;
-        if (prev < 95) return prev + Math.random() * 3;
+      setFakeProgress(prev => {
+        if (prev < 30) return prev + Math.random() * 5;
+        if (prev < 60) return prev + Math.random() * 2;
+        if (prev < 90) return prev + Math.random() * 0.5;
         return prev;
       });
-    }, 300);
+    }, 200);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [progress]);
+
+  const percentage = progress && progress.total > 0
+    ? Math.min(Math.round((progress.loaded / progress.total) * 100), 100)
+    : Math.min(Math.round(fakeProgress), 100);
 
   return (
-    <>
+    <div className="screen-container">
       <Header onBack={onBack} showBackButton={false} />
-      <div style={styles.container}>
-        <div style={styles.content}>
-          <h2 style={styles.title}>🎵 Preparando partida...</h2>
-          
-          <div style={styles.progressBarContainer}>
-            <div 
-              style={{
-                ...styles.progressBar,
-                width: `${Math.min(progress, 100)}%`
-              }} 
-            />
+      
+      <div className="card" style={{ alignItems: 'center', textAlign: 'center', padding: '3rem 2rem' }}>
+        <div style={{ position: 'relative', marginBottom: '2rem' }}>
+          <Loader 
+            size={64} 
+            color="var(--color-principal)" 
+            style={{ animation: 'spin 1.5s linear infinite' }} 
+          />
+          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+            <Music size={24} color="rgba(255,255,255,0.5)" />
           </div>
-          
-          <p style={styles.text}>
-            {Math.min(Math.round(progress), 100)}%
-          </p>
-          
-          <p style={styles.subtitle}>Buscando y descargando canciones...</p>
         </div>
+
+        <h2 style={{ marginBottom: '1rem' }}>PREPARANDO PARTIDA</h2>
+        
+        <div style={{ width: '100%', maxWidth: '300px', marginBottom: '1.5rem' }}>
+          <div style={{ 
+            height: '8px', 
+            background: 'rgba(255,255,255,0.1)', 
+            borderRadius: '4px', 
+            overflow: 'hidden',
+            position: 'relative'
+          }}>
+            <div style={{ 
+              width: `${percentage}%`, 
+              height: '100%', 
+              background: 'var(--color-principal)',
+              borderRadius: '4px',
+              transition: 'width 0.3s ease-out',
+              boxShadow: '0 0 10px var(--color-principal)'
+            }}></div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.7 }}>
+            <span>{percentage}%</span>
+            {progress && progress.total > 0 && (
+              <span>{progress.loaded} / {progress.total} canciones</span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-small" style={{ opacity: 0.6, animation: 'pulse 2s infinite' }}>
+          {percentage < 30 ? 'Despertando a los DJ...' : 
+           percentage < 60 ? 'Afinando los bajos...' : 
+           percentage < 90 ? 'Cargando temazos...' : 
+           '¡Casi listos!'}
+        </p>
       </div>
-    </>
+
+      <style>{`
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+      `}</style>
+    </div>
   );
 }
-
-const styles = {
-  container: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: '100vh',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    fontFamily: 'Arial, sans-serif',
-  } as React.CSSProperties,
-  
-  content: {
-    textAlign: 'center' as const,
-    background: 'rgba(255, 255, 255, 0.95)',
-    padding: '40px',
-    borderRadius: '12px',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-    maxWidth: '400px',
-    width: '90%',
-  } as React.CSSProperties,
-  
-  title: {
-    fontSize: '32px',
-    marginBottom: '30px',
-    color: '#333',
-  } as React.CSSProperties,
-  
-  progressBarContainer: {
-    width: '100%',
-    height: '8px',
-    background: '#e0e0e0',
-    borderRadius: '10px',
-    overflow: 'hidden',
-    marginBottom: '20px',
-  } as React.CSSProperties,
-  
-  progressBar: {
-    height: '100%',
-    background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
-    transition: 'width 0.3s ease',
-  } as React.CSSProperties,
-  
-  text: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#667eea',
-    marginBottom: '10px',
-  } as React.CSSProperties,
-  
-  subtitle: {
-    fontSize: '14px',
-    color: '#999',
-    marginTop: '10px',
-  } as React.CSSProperties,
-};

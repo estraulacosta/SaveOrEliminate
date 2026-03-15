@@ -2,6 +2,162 @@ import axios from 'axios';
 import type { Song } from './types.js';
 
 const DEEZER_API = 'https://api.deezer.com';
+const ITUNES_API = 'https://itunes.apple.com/search';
+const trackYearCache = new Map<string, number | null>();
+
+const TITLE_BLOCKLIST = [
+  'remix', 'remaster', 'remastered', 'live', 'edit', 'radio edit', 'extended',
+  'version', 'mix', 'karaoke', 'instrumental', 'sped up', 'slowed', 'nightcore',
+  'rework', 'bootleg', 'cover'
+];
+
+
+function extractYearFromDate(value?: string): number | null {
+  if (!value || value.length < 4) return null;
+  const parsed = parseInt(value.substring(0, 4));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function shouldRejectTitle(title: string, year?: number): boolean {
+  const normalized = title.toLowerCase();
+
+  if (TITLE_BLOCKLIST.some(word => normalized.includes(word))) {
+    return true;
+  }
+
+  return false;
+}
+
+function getTrackAndAlbumYear(track: any): { trackYear: number | null; albumYear: number | null } {
+  return {
+    trackYear: extractYearFromDate(track?.release_date),
+    albumYear: extractYearFromDate(track?.album?.release_date),
+  };
+}
+
+function isStrictYearMatch(year: number, trackYear: number | null, albumYear: number | null): boolean {
+  // Preferimos año del track; solo usar álbum si trackYear no existe.
+  if (trackYear !== null) {
+    return trackYear === year;
+  }
+  return albumYear === year;
+}
+
+function normalizeSongIdentity(name: string, artist: string): string {
+  const cleanName = name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const cleanArtist = artist
+    .toLowerCase()
+    .replace(/feat\.?/g, ',')
+    .replace(/ft\.?/g, ',')
+    .replace(/ x /g, ',')
+    .replace(/&/g, ',')
+    .split(',')
+    .map((part) => part.replace(/[^a-z0-9]+/g, ' ').trim())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+  return `${cleanName}::${cleanArtist}`;
+}
+
+function dedupeByIdentity(songs: Song[]): Song[] {
+  const seen = new Set<string>();
+  const output: Song[] = [];
+  for (const song of songs) {
+    const key = normalizeSongIdentity(song.name, song.artist);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(song);
+  }
+  return output;
+}
+
+async function resolveTrackYear(track: any): Promise<number | null> {
+  const trackId = track?.id?.toString();
+  if (!trackId) return null;
+
+  if (trackYearCache.has(trackId)) {
+    return trackYearCache.get(trackId) ?? null;
+  }
+
+  const fastTrackYear = extractYearFromDate(track.release_date);
+  if (fastTrackYear) {
+    trackYearCache.set(trackId, fastTrackYear);
+    return fastTrackYear;
+  }
+
+  const fastAlbumYear = extractYearFromDate(track.album?.release_date);
+  if (fastAlbumYear) {
+    trackYearCache.set(trackId, fastAlbumYear);
+    return fastAlbumYear;
+  }
+
+  try {
+    const detail = await axios.get(`${DEEZER_API}/track/${trackId}`);
+    const detailYear = extractYearFromDate(detail.data?.release_date)
+      ?? extractYearFromDate(detail.data?.album?.release_date);
+    trackYearCache.set(trackId, detailYear ?? null);
+    return detailYear ?? null;
+  } catch {
+    trackYearCache.set(trackId, null);
+    return null;
+  }
+}
+
+async function searchItunesByYear(year: number, limit: number): Promise<Song[]> {
+  const collected: Song[] = [];
+  const seen = new Set<string>();
+  const terms = [`${year} hits`, `top songs ${year}`, `best songs ${year}`];
+
+  for (const term of terms) {
+    if (collected.length >= limit) break;
+
+    try {
+      const response = await axios.get(ITUNES_API, {
+        params: {
+          term,
+          entity: 'song',
+          country: 'US',
+          limit: 200,
+        },
+        timeout: 7000,
+      });
+
+      const items = response.data?.results ?? [];
+      for (const item of items) {
+        if (collected.length >= limit) break;
+        if (!item?.previewUrl) continue;
+
+        const releaseYear = extractYearFromDate(item.releaseDate);
+        if (releaseYear !== year) continue;
+        if (shouldRejectTitle(item.trackName ?? '', year)) continue;
+
+        const id = `itunes-${item.trackId ?? `${item.artistName}-${item.trackName}`}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        collected.push({
+          id,
+          name: item.trackName,
+          artist: item.artistName,
+          previewUrl: item.previewUrl,
+          albumArt: item.artworkUrl100?.replace('100x100bb', '600x600bb') || '',
+          spotifyUrl: item.trackViewUrl || '',
+          releaseYear: year,
+        });
+      }
+    } catch (error) {
+      const status = (error as any)?.response?.status;
+      console.warn(`iTunes year fallback failed for ${year} / ${term}${status ? ` (status ${status})` : ''}`);
+    }
+  }
+
+  return collected;
+}
 
 // Mapeo de géneros a artistas clave 100% confiables para búsqueda pura
 const GENRE_ARTISTS: { [key: string]: string[] } = {
@@ -427,48 +583,82 @@ export async function getTopTracks(limit: number = 20): Promise<Song[]> {
 }
 
 export async function getTopArtists(limit: number = 20): Promise<Array<{name: string; image: string}>> {
+  const artistNames = [
+    'Bruno Mars',
+    'Bad Bunny',
+    'The Weeknd',
+    'Rihanna',
+    'Taylor Swift',
+    'Justin Bieber',
+    'Lady Gaga',
+    'Coldplay',
+    'Billie Eilish',
+    'Drake',
+    'J Balvin',
+    'Ariana Grande',
+    'Ed Sheeran',
+    'David Guetta',
+    'Shakira',
+    'Kendrick Lamar',
+    'Maroon 5',
+    'Eminem',
+    'SZA',
+    'Calvin Harris'
+  ];
+
   try {
-    // Obtener artistas del chart de Deezer
-    const response = await axios.get(`${DEEZER_API}/chart/0/artists`, {
-      params: { limit }
-    });
+    // Buscar imagen para cada artista en Deezer
+    const artists = await Promise.all(
+      artistNames.slice(0, limit).map(async (name) => {
+        try {
+          const response = await axios.get(`${DEEZER_API}/search/artist`, {
+            params: { q: name, limit: 1 }
+          });
+          
+          if (response.data.data && response.data.data.length > 0) {
+            const artist = response.data.data[0];
+            return {
+              name: name,
+              image: artist.picture_medium || artist.picture || artist.picture_small || ''
+            };
+          }
+        } catch (err) {
+          // Ignorar errores individuales y devolver sin imagen
+        }
+        
+        return { name: name, image: '' };
+      })
+    );
 
-    if (!response.data.data || response.data.data.length === 0) {
-      return defaultTopArtists();
-    }
-
-    return response.data.data.map((artist: any) => ({
-      name: artist.name,
-      image: artist.picture_medium || artist.picture || artist.picture_small || ''
-    }));
+    return artists;
   } catch (error) {
     console.error('Error getting top artists:', error);
-    return defaultTopArtists();
+    return defaultTopArtists().slice(0, limit);
   }
 }
 
 function defaultTopArtists(): Array<{name: string; image: string}> {
   return [
-    { name: 'Taylor Swift', image: '' },
+    { name: 'Bruno Mars', image: '' },
     { name: 'Bad Bunny', image: '' },
-    { name: 'Drake', image: '' },
     { name: 'The Weeknd', image: '' },
+    { name: 'Rihanna', image: '' },
+    { name: 'Taylor Swift', image: '' },
+    { name: 'Justin Bieber', image: '' },
+    { name: 'Lady Gaga', image: '' },
+    { name: 'Coldplay', image: '' },
+    { name: 'Billie Eilish', image: '' },
+    { name: 'Drake', image: '' },
+    { name: 'J Balvin', image: '' },
     { name: 'Ariana Grande', image: '' },
     { name: 'Ed Sheeran', image: '' },
-    { name: 'Justin Bieber', image: '' },
-    { name: 'Billie Eilish', image: '' },
-    { name: 'Post Malone', image: '' },
-    { name: 'Dua Lipa', image: '' },
-    { name: 'Olivia Rodrigo', image: '' },
-    { name: 'Harry Styles', image: '' },
-    { name: 'BTS', image: '' },
-    { name: 'Coldplay', image: '' },
-    { name: 'Imagine Dragons', image: '' },
+    { name: 'David Guetta', image: '' },
+    { name: 'Shakira', image: '' },
+    { name: 'Kendrick Lamar', image: '' },
     { name: 'Maroon 5', image: '' },
-    { name: 'Rihanna', image: '' },
     { name: 'Eminem', image: '' },
-    { name: 'Kanye West', image: '' },
-    { name: 'Beyoncé', image: '' }
+    { name: 'SZA', image: '' },
+    { name: 'Calvin Harris', image: '' }
   ];
 }
 
