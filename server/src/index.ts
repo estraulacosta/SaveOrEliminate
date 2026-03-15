@@ -11,12 +11,25 @@ const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',
+    origin: [
+      'https://save-or-eliminate.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+    ],
     methods: ['GET', 'POST'],
+    credentials: true,
   },
+  transports: ['websocket', 'polling'],
 });
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://save-or-eliminate.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ],
+  credentials: true,
+}));
 app.use(express.json());
 
 app.get('/health', (req, res) => {
@@ -41,7 +54,7 @@ io.on('connection', (socket) => {
       io.to(roomId).emit('player-joined', room);
       console.log(`${playerName} joined room ${roomId}`);
     } else {
-      socket.emit('error', { message: 'Room not found or full' });
+      socket.emit('error', { message: 'La sala no fue encontrada o está llena' });
     }
   });
 
@@ -74,7 +87,8 @@ io.on('connection', (socket) => {
           totalRounds: room?.totalRounds,
           currentYear,
           currentDecade,
-          selectionType: config.selectionType
+          selectionType: config.selectionType,
+          mode: config.mode
         });
         console.log(`Game started in room ${roomId}, round 1/${room?.totalRounds}`);
       } else {
@@ -125,13 +139,19 @@ io.on('connection', (socket) => {
         totalRounds: room?.totalRounds,
         currentYear,
         currentDecade,
-        selectionType: room?.gameConfig?.selectionType
+        selectionType: room?.gameConfig?.selectionType,
+        mode: room?.gameConfig?.mode
       });
       console.log(`New round in room ${roomId}: ${round.roundNumber}/${room?.totalRounds}`);
     } else {
       io.to(roomId).emit('game-finished');
       console.log(`Game finished in room ${roomId}`);
     }
+  });
+
+  socket.on('end-game', ({ roomId }) => {
+    console.log(`Host ended game in room ${roomId}`);
+    io.to(roomId).emit('game-finished');
   });
 
   socket.on('reset-game', ({ roomId }) => {
@@ -162,7 +182,21 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
-    // Aquí podríamos manejar la desconexión eliminando al jugador de su sala
+    
+    const result = gameManager.findAndRemovePlayerFromAllRooms(socket.id);
+    if (result) {
+      const { roomId, room, playerName } = result;
+      
+      if (room.players.length > 0) {
+        // Notificar a los otros jugadores
+        io.to(roomId).emit('player-left', {
+          room: room,
+          message: `${playerName} se ha desconectado`
+        });
+      } else {
+        console.log(`Room ${roomId} deleted (no players left)`);
+      }
+    }
   });
 });
 

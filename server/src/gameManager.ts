@@ -102,10 +102,10 @@ export function removePlayer(roomId: string, playerId: string): boolean {
   const room = rooms.get(roomId);
   if (!room) return false;
   
-  room.players = room.players.filter(p => p.id !== playerId);
+  room.players = room.players.filter((p: Player) => p.id !== playerId);
   
   // Si sale el host, asignar a otro
-  if (room.players.length > 0 && !room.players.some(p => p.isHost)) {
+  if (room.players.length > 0 && !room.players.some((p: Player) => p.isHost)) {
     room.players[0].isHost = true;
   }
   
@@ -115,6 +115,17 @@ export function removePlayer(roomId: string, playerId: string): boolean {
   }
   
   return true;
+}
+
+export function findAndRemovePlayerFromAllRooms(playerId: string): { roomId: string; room: Room; playerName: string } | null {
+  for (const [roomId, room] of rooms.entries()) {
+    const player = room.players.find((p: Player) => p.id === playerId);
+    if (player) {
+      removePlayer(roomId, playerId);
+      return { roomId, room, playerName: player.name };
+    }
+  }
+  return null;
 }
 
 // ============================================================
