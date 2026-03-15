@@ -179,7 +179,7 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Myke Towers', 'Feid', 'De La Ghetto', 'Chencho Corleone', 'Yandel', 
         'Tito El Bambino', 'Ñengo Flow', 'Ryan Castro', 'Blessd', 'El Alfa',
         'Luny Tunes', 'Natti Natasha', 'Becky G', 'Sech', 'Mora', 
-        'Manuel Turizo', 'Bryant Myers', 'Cosculluela', 'Baby Rasta & Gringo', 'Calle 13'
+        'Manuel Turizo', 'Bryant Myers', 'Cosculluela', 'Baby Rasta & Gringo', 'Calle 13', 'Quevedo'
     ],
     'punk': [
         'The Ramones', 'Sex Pistols', 'The Clash', 'Dead Kennedys', 'Black Flag', 
