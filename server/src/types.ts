@@ -12,6 +12,7 @@ export interface Player {
   id: string;
   name: string;
   isHost: boolean;
+  avatar: number;
 }
 
 export type GameMode = 'save' | 'eliminate';
@@ -21,6 +22,7 @@ export interface GameConfig {
   mode: GameMode;
   selectionType: MusicSelectionType;
   songsPerRound: number; // 2-6
+  totalRounds?: number; // 1-20 (opcional, según tipo de selección)
   
   // Valores según el tipo de selección
   genre?: string;
@@ -62,4 +64,9 @@ export interface Room {
   yearSongPool?: Map<number, Song[]>;
   yearSongLoadPromises?: Map<number, Promise<Song[]>>;
   currentYearIndex?: number; // índice del año actual en el modo año
+  // Modo versus: pools de canciones de cada artista
+  versusSongsOption1?: Song[];
+  versusSongsOption2?: Song[];
+  versusUsedIndices1?: Set<number>;
+  versusUsedIndices2?: Set<number>;
 }

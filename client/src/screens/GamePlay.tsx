@@ -50,7 +50,7 @@ function createSimpleAudio(audioElement: HTMLAudioElement) {
   };
 }
 
-export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode, onTimerEnd, onBack }: GamePlayProps) {
+export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode, selectionType, onTimerEnd, onBack }: GamePlayProps) {
   const [selectedSong, setSelectedSong] = useState<string | null>(null);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(round.roundNumber === 1 ? -1 : 0);
   const [previewsPlayed, setPreviewsPlayed] = useState(false); // Always start with previews
@@ -91,7 +91,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
     setTimer(10);
     setVoteCounts({});
     setPlayingPreviewId(null);
-  }, [round.id]);
+  }, [round.roundNumber]);
 
   // Auto-play previews de 10 segundos
   useEffect(() => {
@@ -324,7 +324,9 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
           }}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: round.songs.length === 2
+              gridTemplateColumns: selectionType === 'versus' && round.songs.length === 2
+                ? 'repeat(2, minmax(clamp(220px, 35vw, 380px), clamp(220px, 35vw, 380px)))'
+                : round.songs.length === 2
                 ? 'repeat(2, minmax(clamp(150px, 25vw, 220px), clamp(150px, 25vw, 220px)))'
                 : round.songs.length === 4 
                 ? 'repeat(4, minmax(clamp(150px, 25vw, 220px), clamp(150px, 25vw, 220px)))' 
@@ -380,17 +382,17 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                   {votingStarted && voteCount > 0 && (
                     <div style={{
                       position: 'absolute',
-                      top: 'clamp(8px, 2vw, 12px)',
-                      right: 'clamp(8px, 2vw, 12px)',
+                      top: selectionType === 'versus' ? 'clamp(12px, 3vw, 18px)' : 'clamp(8px, 2vw, 12px)',
+                      right: selectionType === 'versus' ? 'clamp(12px, 3vw, 18px)' : 'clamp(8px, 2vw, 12px)',
                       backgroundColor: gameMode === 'eliminate' ? 'var(--color-eliminate)' : 'var(--color-save)',
                       color: 'white',
                       borderRadius: '50%',
-                      width: 'clamp(35px, 8vw, 45px)',
-                      height: 'clamp(35px, 8vw, 45px)',
+                      width: selectionType === 'versus' ? 'clamp(50px, 12vw, 65px)' : 'clamp(35px, 8vw, 45px)',
+                      height: selectionType === 'versus' ? 'clamp(50px, 12vw, 65px)' : 'clamp(35px, 8vw, 45px)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: 'clamp(1rem, 3vw, 1.2rem)',
+                      fontSize: selectionType === 'versus' ? 'clamp(1.2rem, 4vw, 1.6rem)' : 'clamp(1rem, 3vw, 1.2rem)',
                       fontWeight: 'bold',
                       zIndex: 10,
                       boxShadow: gameMode === 'eliminate' 
@@ -411,7 +413,10 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                       style={{
                         boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
                         transition: 'all 0.3s ease',
-                        display: 'block'
+                        display: 'block',
+                        borderRadius: selectionType === 'versus' ? 'clamp(16px, 3vw, 24px)' : 'clamp(12px, 2vw, 16px)',
+                        width: selectionType === 'versus' ? 'clamp(220px, 35vw, 380px)' : 'clamp(150px, 25vw, 220px)',
+                        height: selectionType === 'versus' ? 'clamp(220px, 35vw, 380px)' : 'clamp(150px, 25vw, 220px)',
                       }}
                     />
                     
@@ -477,8 +482,22 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                       </div>
                     )}
                   </div>
-                  <h3 style={{ fontSize: 'clamp(0.85rem, 3vw, 1.1rem)', textAlign: 'center', marginTop: 'clamp(0.5rem, 2vw, 0.8rem)', marginBottom: '-0.55rem', lineHeight: '1', padding: '0' }}>{song.name}</h3>
-                  <p style={{ fontSize: 'clamp(0.75rem, 2.5vw, 0.95rem)', margin: 0, opacity: 0.8, textAlign: 'center', lineHeight: '1', padding: '0' }}>{song.artist}</p>
+                  <h3 style={{ 
+                    fontSize: selectionType === 'versus' ? 'clamp(1.1rem, 4vw, 1.5rem)' : 'clamp(0.85rem, 3vw, 1.1rem)', 
+                    textAlign: 'center', 
+                    marginTop: selectionType === 'versus' ? 'clamp(1rem, 2vw, 1.5rem)' : 'clamp(0.5rem, 2vw, 0.8rem)', 
+                    marginBottom: '-0.55rem', 
+                    lineHeight: '1', 
+                    padding: '0' 
+                  }}>{song.name}</h3>
+                  <p style={{ 
+                    fontSize: selectionType === 'versus' ? 'clamp(0.95rem, 3.2vw, 1.2rem)' : 'clamp(0.75rem, 2.5vw, 0.95rem)', 
+                    margin: 0, 
+                    opacity: 0.8, 
+                    textAlign: 'center', 
+                    lineHeight: '1', 
+                    padding: '0' 
+                  }}>{song.artist}</p>
                 </div>
               );
             })}
@@ -491,8 +510,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                 gap: 'clamp(1rem, 3vw, 2rem)',
                 marginTop: 'clamp(0rem, 1vw, 0.5rem)'
               }}>
-                {round.songs.slice(3).map((song, sliceIndex) => {
-                  const index = 3 + sliceIndex;
+                {round.songs.slice(3).map((song) => {
                   const voteCount = voteCounts[song.id] || 0;
                   const isSelected = selectedSong === song.id;
                   const isEliminate = gameMode === 'eliminate';

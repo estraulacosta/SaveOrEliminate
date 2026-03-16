@@ -65,9 +65,31 @@ export default function Lobby({ room, isHost, onStartGame, onBack }: LobbyProps)
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 marginBottom: 'clamp(0.6rem, 1.5vw, 1rem)',
                 fontSize: 'clamp(1.2rem, 3vw, 1.8rem)',
-                fontWeight: 'bold'
+                fontWeight: 'bold',
+                overflow: 'hidden',
+                position: 'relative'
               }}>
-                {player.name.charAt(0).toUpperCase()}
+                <img
+                  src={`/Avatares/${player.avatar}.png`}
+                  alt={player.name}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    const parent = (e.target as HTMLImageElement).parentElement;
+                    if (parent) {
+                      parent.style.backgroundColor = `hsl(${player.avatar * 22.5}, 70%, ${player.isHost ? '60%' : '50%'})`;
+                      parent.style.color = '#fff';
+                      parent.style.textShadow = '0 2px 4px rgba(0,0,0,0.3)';
+                      const fallback = document.createElement('div');
+                      fallback.textContent = player.avatar.toString();
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               </div>
               <span style={{ fontWeight: 700, fontSize: 'clamp(0.8rem, 2vw, 1.1rem)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
                 {player.name}
