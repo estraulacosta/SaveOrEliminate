@@ -199,23 +199,6 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
     setShowDecadeDropdown2(false);
   };
 
-  const typeOptions = [
-    { value: 'artist' as const, label: 'Artista vs Artista', icon: '🎤' },
-    { value: 'year' as const, label: 'Año vs Año', icon: '📅' },
-    { value: 'genre' as const, label: 'Género vs Género', icon: '🎵' },
-    { value: 'decade' as const, label: 'Década vs Década', icon: '⏰' },
-  ];
-
-  const getPlaceholder = (index: number) => {
-    const labels = {
-      'artist': ['Primer artista', 'Segundo artista'],
-      'year': ['Primer año', 'Segundo año'],
-      'genre': ['Primer género', 'Segundo género'],
-      'decade': ['Primera década', 'Segunda década'],
-    };
-    return labels[type][index];
-  };
-
   const handleSubmit = () => {
     if (option1.trim() && option2.trim()) {
       // Easter egg: Michael Jackson vs Olivia Rodrigo
