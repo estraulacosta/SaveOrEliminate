@@ -8,6 +8,14 @@ interface Artist {
   image: string;
 }
 
+// Helper to get responsive font sizes for mobile
+const getResponsiveFontSize = (mobileSize: string, desktopSize: string): string => {
+  if (typeof window !== 'undefined' && window.innerWidth <= 600) {
+    return mobileSize;
+  }
+  return desktopSize;
+};
+
 interface VersusConfig {
   type: 'artist' | 'year' | 'genre' | 'decade';
   option1: string;
@@ -297,7 +305,7 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
                     style={{
                       width: '100%',
                       padding: '1rem',
-                      fontSize: '1rem',
+                      fontSize: getResponsiveFontSize('0.8rem', '1rem'),
                       borderRadius: '10px',
                       border: '2px solid rgba(128, 22, 199, 0.3)',
                       background: 'rgba(255, 255, 255, 0.05)',
@@ -316,7 +324,8 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
                       marginTop: '0.5rem',
                       zIndex: 10,
                       maxHeight: '250px',
-                      overflowY: 'auto'
+                      overflowY: 'auto',
+                      overflowX: 'hidden'
                     }}>
                       {results1.map((artist, idx) => (
                         <button
@@ -335,7 +344,9 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
                             cursor: 'pointer',
                             borderBottom: idx < results1.length - 1 ? '1px solid rgba(128, 22, 199, 0.2)' : 'none',
                             textAlign: 'left',
-                            transition: 'background 0.2s'
+                            transition: 'background 0.2s',
+                            minWidth: 0,
+                            overflow: 'hidden'
                           }}
                           onMouseEnter={(e) => {
                             (e.currentTarget as HTMLButtonElement).style.background = 'rgba(128, 22, 199, 0.2)';
@@ -357,7 +368,7 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
                               }}
                             />
                           )}
-                          <span style={{ fontSize: '0.9rem' }}>{artist.name}</span>
+                          <span style={{ fontSize: getResponsiveFontSize('0.75rem', '0.9rem'), minWidth: 0, overflow: 'hidden', wordBreak: 'break-word' }}>{artist.name}</span>
                         </button>
                       ))}
                     </div>
@@ -650,7 +661,7 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
                     style={{
                       width: '100%',
                       padding: '1rem',
-                      fontSize: '1rem',
+                      fontSize: getResponsiveFontSize('0.8rem', '1rem'),
                       borderRadius: '10px',
                       border: '2px solid rgba(128, 22, 199, 0.3)',
                       background: 'rgba(255, 255, 255, 0.05)',
@@ -669,7 +680,8 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
                       marginTop: '0.5rem',
                       zIndex: 10,
                       maxHeight: '250px',
-                      overflowY: 'auto'
+                      overflowY: 'auto',
+                      overflowX: 'hidden'
                     }}>
                       {results2.map((artist, idx) => (
                         <button
@@ -688,7 +700,9 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
                             cursor: 'pointer',
                             borderBottom: idx < results2.length - 1 ? '1px solid rgba(128, 22, 199, 0.2)' : 'none',
                             textAlign: 'left',
-                            transition: 'background 0.2s'
+                            transition: 'background 0.2s',
+                            minWidth: 0,
+                            overflow: 'hidden'
                           }}
                           onMouseEnter={(e) => {
                             (e.currentTarget as HTMLButtonElement).style.background = 'rgba(128, 22, 199, 0.2)';
@@ -710,7 +724,7 @@ export default function VersusSelect({ onSelect, onBack }: VersusSelectProps) {
                               }}
                             />
                           )}
-                          <span style={{ fontSize: '0.9rem' }}>{artist.name}</span>
+                          <span style={{ fontSize: getResponsiveFontSize('0.75rem', '0.9rem'), minWidth: 0, overflow: 'hidden', wordBreak: 'break-word' }}>{artist.name}</span>
                         </button>
                       ))}
                     </div>

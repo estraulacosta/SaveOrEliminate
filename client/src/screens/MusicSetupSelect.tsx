@@ -104,7 +104,7 @@ export default function MusicSetupSelect({ onSelectType, onBack }: MusicSetupSel
       {/* Sección 1: Selección de tipo */}
       <div style={{ marginBottom: '2rem', width: '100%' }}>
         <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>Tipo de Selección</h2>
-        <div className="grid" style={{ maxWidth: '1000px', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '1rem', margin: '0 auto' }}>
+        <div className="grid" style={{ maxWidth: '100%', margin: '0 auto' }}>
           {typeOptions.map((opt) => (
             <button 
               type="button"
@@ -122,9 +122,9 @@ export default function MusicSetupSelect({ onSelectType, onBack }: MusicSetupSel
                 color: 'white',
                 cursor: 'pointer',
                 transition: 'all 0.3s',
-                minHeight: '110px',
+                minHeight: '100px',
                 justifyContent: 'center',
-                fontSize: '0.75rem',
+                fontSize: '0.7rem',
                 fontWeight: 600,
               }}
               onMouseEnter={(e) => {
@@ -152,7 +152,7 @@ export default function MusicSetupSelect({ onSelectType, onBack }: MusicSetupSel
         
         {selectedType === 'year' && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginBottom: '1.5rem' }}>
+            <div className="config-grid-2">
               {/* Deslizador 1: Años (IZQUIERDA) */}
               <div>
                 <h2 style={{ fontSize: '1.3rem', marginBottom: '1.5rem', textAlign: 'center' }}>SELECCIONA AÑOS</h2>
@@ -313,7 +313,7 @@ export default function MusicSetupSelect({ onSelectType, onBack }: MusicSetupSel
 
         {selectedType === 'decade' && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginBottom: '1.5rem' }}>
+            <div className="config-grid-2">
               {/* Deslizador 1: Décadas (IZQUIERDA) */}
               <div>
                 <h2 style={{ fontSize: '1.3rem', marginBottom: '1.5rem', textAlign: 'center' }}>SELECCIONA DÉCADAS</h2>

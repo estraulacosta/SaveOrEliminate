@@ -322,19 +322,10 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
             padding: '0 clamp(0.5rem, 2vw, 1rem)',
             marginBottom: 'clamp(1rem, 2vw, 1.5rem)'
           }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: selectionType === 'versus' && round.songs.length === 2
-                ? 'repeat(2, minmax(clamp(220px, 35vw, 380px), clamp(220px, 35vw, 380px)))'
-                : round.songs.length === 2
-                ? 'repeat(2, minmax(clamp(150px, 25vw, 220px), clamp(150px, 25vw, 220px)))'
-                : round.songs.length === 4 
-                ? 'repeat(4, minmax(clamp(150px, 25vw, 220px), clamp(150px, 25vw, 220px)))' 
-                : 'repeat(3, minmax(clamp(150px, 25vw, 220px), clamp(150px, 25vw, 220px)))',
-              gap: 'clamp(1rem, 3vw, 2rem)',
+            <div className="songs-voting-grid" style={{
               justifyContent: 'center',
               justifyItems: 'center',
-              width: 'fit-content',
+              width: '100%',
               margin: '0 auto'
             }}>
               {round.songs.map((song, index) => {

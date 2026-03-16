@@ -55,65 +55,111 @@ export default function DecadeSelect({ onSelect, onBack }: DecadeSelectProps) {
       <h1 style={{ fontSize: 'clamp(1.5rem, 5vw, 3rem)' }}>SELECCIONA DÉCADAS</h1>
       
       <div className="card">
-        <div style={{ position: 'relative', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ 
+          position: 'relative', 
+          height: 'auto',
+          display: 'flex', 
+          flexDirection: 'column',
+          alignItems: 'stretch', 
+          justifyContent: 'center',
+          gap: 'clamp(1.5rem, 4vw, 3rem)'
+        }}>
           
-          {/* Visual Range Bar Background */}
-          <div style={{
-            position: 'absolute',
-            left: 0, right: 0,
-            top: '50%', marginTop: '-4px',
-            height: '8px',
-            background: 'rgba(255,255,255,0.1)',
-            borderRadius: '4px',
-            zIndex: 1
-          }}></div>
-
-          {/* Active Range Bar */}
-          <div style={{
-            position: 'absolute',
-            left: `${startPercent}%`,
-            width: `${endPercent - startPercent}%`,
-            top: '50%', marginTop: '-4px',
-            height: '8px',
-            background: 'var(--color-principal)',
-            borderRadius: '4px',
-            zIndex: 2,
-            boxShadow: '0 0 10px var(--color-principal)'
-          }}></div>
-
-          {/* Inputs (Invisible but clickable) */}
-          <input
-            type="range"
-            min={MIN_DECADE}
-            max={MAX_DECADE}
-            step="10"
-            value={startDecade}
-            onChange={handleStartChange}
-            style={{
+          {/* First Slider - Start Decade */}
+          <div style={{ position: 'relative', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Visual Range Bar Background */}
+            <div style={{
               position: 'absolute',
-              width: '100%',
-              appearance: 'none',
-              background: 'transparent',
-              zIndex: 4,
-            }}
-            className="dual-range-slider"
-          />
-          <input
-            type="range"
-            min={MIN_DECADE}
-            max={MAX_DECADE}
-            step="10"
-            value={endDecade}
-            onChange={handleEndChange}
-            style={{
+              left: '0',
+              right: '0',
+              top: '50%',
+              marginTop: '-4px',
+              height: '8px',
+              background: 'rgba(255,255,255,0.1)',
+              borderRadius: '4px',
+              zIndex: 1
+            }}></div>
+
+            {/* Active Range Bar for start */}
+            <div style={{
               position: 'absolute',
-              width: '100%',
-              appearance: 'none',
-              background: 'transparent',
-              zIndex: 3, // Below startYear slider
-            }}
-            className="dual-range-slider"
-          />
+              left: '0',
+              width: `${startPercent}%`,
+              top: '50%',
+              marginTop: '-4px',
+              height: '8px',
+              background: 'var(--color-principal)',
+              borderRadius: '4px',
+              zIndex: 2,
+              boxShadow: '0 0 10px var(--color-principal)'
+            }}></div>
+
+            {/* Start Decade Slider */}
+            <input
+              type="range"
+              min={MIN_DECADE}
+              max={MAX_DECADE}
+              step="10"
+              value={startDecade}
+              onChange={handleStartChange}
+              style={{
+                position: 'absolute',
+                width: '100%',
+                appearance: 'none',
+                background: 'transparent',
+                zIndex: 3,
+              }}
+              className="dual-range-slider"
+            />
+          </div>
+
+          {/* Second Slider - End Decade */}
+          <div style={{ position: 'relative', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Visual Range Bar Background */}
+            <div style={{
+              position: 'absolute',
+              left: '0',
+              right: '0',
+              top: '50%',
+              marginTop: '-4px',
+              height: '8px',
+              background: 'rgba(255,255,255,0.1)',
+              borderRadius: '4px',
+              zIndex: 1
+            }}></div>
+
+            {/* Active Range Bar for end */}
+            <div style={{
+              position: 'absolute',
+              left: `${startPercent}%`,
+              width: `${endPercent - startPercent}%`,
+              top: '50%',
+              marginTop: '-4px',
+              height: '8px',
+              background: 'var(--color-principal)',
+              borderRadius: '4px',
+              zIndex: 2,
+              boxShadow: '0 0 10px var(--color-principal)'
+            }}></div>
+
+            {/* End Decade Slider */}
+            <input
+              type="range"
+              min={MIN_DECADE}
+              max={MAX_DECADE}
+              step="10"
+              value={endDecade}
+              onChange={handleEndChange}
+              style={{
+                position: 'absolute',
+                width: '100%',
+                appearance: 'none',
+                background: 'transparent',
+                zIndex: 4,
+              }}
+              className="dual-range-slider"
+            />
+          </div>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'clamp(1rem, 2vw, 2rem)', marginBottom: 'clamp(1rem, 2vw, 2rem)', fontSize: 'clamp(0.9rem, 2vw, 1.1rem)', fontWeight: 600 }}>
