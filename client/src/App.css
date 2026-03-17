@@ -847,25 +847,145 @@ header {
   padding: 0 clamp(0.5rem, 2vw, 1rem) !important;
 }
 
-/* En pantallas pequeñas (móvil/tablet vertical) - siempre 2 columnas */
+/* En pantallas pequeñas (móvil/tablet vertical) - Configuraciones específicas */
 @media (max-width: 768px) {
+  /* Por defecto 2 columnas */
   .vote-results-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     max-width: min(95vw, 600px) !important;
   }
-}
 
-/* En pantallas medianas - 2 o 3 columnas según el contenido */
-@media (min-width: 769px) and (max-width: 1023px) {
-  .vote-results-grid {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
-    max-width: min(95vw, 900px) !important;
+  /* 1 canción - 1 columna 1 fila */
+  .vote-results-count-1 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 2 canciones - 2 columnas 1 fila */
+  .vote-results-count-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* 3 canciones - 2 columnas arriba + 1 columna centrada abajo */
+  .vote-results-count-3 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .vote-results-count-3 > .vote-result-card:nth-child(3) {
+    grid-column: 1 / 2;
+  }
+
+  /* 4 canciones - 2 columnas arriba + 2 columnas abajo */
+  .vote-results-count-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* 5 canciones - 2 columnas arriba + 2 en medio + 1 centrada abajo */
+  .vote-results-count-5 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .vote-results-count-5 > .vote-result-card:nth-child(5) {
+    grid-column: 1 / 2;
+  }
+
+  /* 6 canciones - 3 columnas 2 filas */
+  .vote-results-count-6 {
+    grid-template-columns: repeat(3, 1fr) !important;
   }
 }
 
-/* En pantallas grandes - 3 columnas con centrado */
-@media (min-width: 1024px) {
+/* En pantallas medianas (tablet horizontal) - Transición */
+@media (min-width: 769px) and (max-width: 1023px) {
   .vote-results-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    max-width: min(95vw, 900px) !important;
+  }
+
+  .vote-results-count-3 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  .vote-results-count-4 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+  .vote-results-count-4 > .vote-result-card:nth-child(4) {
+    grid-column: 2 / 3;
+  }
+
+  .vote-results-count-5 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+  .vote-results-count-5 > .vote-result-card:nth-child(4) {
+    grid-column: 2 / 3;
+  }
+  .vote-results-count-5 > .vote-result-card:nth-child(5) {
+    grid-column: 3 / 4;
+  }
+
+  .vote-results-count-6 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+/* En pantallas grandes (desktop) - Configuraciones específicas */
+@media (min-width: 1024px) {
+  /* 1 canción - 1 columna 1 fila */
+  .vote-results-count-1 {
+    grid-template-columns: 1fr !important;
+    max-width: 1400px !important;
+  }
+
+  /* 2 canciones - 2 columnas 1 fila */
+  .vote-results-count-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    max-width: 1400px !important;
+  }
+
+  /* 3 canciones - 3 columnas 1 fila */
+  .vote-results-count-3 {
+    grid-template-columns: repeat(3, 1fr) !important;
+    max-width: 1400px !important;
+  }
+
+  /* 4 canciones - 3 columnas arriba + 1 columna centrada abajo */
+  .vote-results-count-4 {
+    grid-template-columns: repeat(6, 1fr) !important;
+    max-width: 1400px !important;
+  }
+  .vote-results-count-4 > .vote-result-card:nth-child(1) {
+    grid-column: 1 / span 2;
+  }
+  .vote-results-count-4 > .vote-result-card:nth-child(2) {
+    grid-column: 3 / span 2;
+  }
+  .vote-results-count-4 > .vote-result-card:nth-child(3) {
+    grid-column: 5 / span 2;
+  }
+  .vote-results-count-4 > .vote-result-card:nth-child(4) {
+    grid-column: 2 / span 2;
+  }
+
+  /* 5 canciones - 3 columnas arriba + 2 columnas centradas abajo */
+  .vote-results-count-5 {
+    grid-template-columns: repeat(6, 1fr) !important;
+    max-width: 1400px !important;
+  }
+  .vote-results-count-5 > .vote-result-card:nth-child(1) {
+    grid-column: 1 / span 2;
+  }
+  .vote-results-count-5 > .vote-result-card:nth-child(2) {
+    grid-column: 3 / span 2;
+  }
+  .vote-results-count-5 > .vote-result-card:nth-child(3) {
+    grid-column: 5 / span 2;
+  }
+  .vote-results-count-5 > .vote-result-card:nth-child(4) {
+    grid-column: 2 / span 2;
+  }
+  .vote-results-count-5 > .vote-result-card:nth-child(5) {
+    grid-column: 4 / span 2;
+  }
+
+  /* 6 canciones - 3 columnas + 3 columnas */
+  .vote-results-count-6 {
     grid-template-columns: repeat(3, 1fr) !important;
     max-width: 1400px !important;
   }
@@ -874,10 +994,6 @@ header {
 /* Vote Results Cards - Responsive Layout */
 .vote-result-card {
   transition: all 0.3s ease;
-}
-
-/* En todas las pantallas - layout consistente */
-.vote-result-card {
   display: grid !important;
   grid-template-columns: 1fr auto !important;
   grid-template-rows: auto auto auto !important;

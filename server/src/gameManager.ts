@@ -131,6 +131,42 @@ export function findAndRemovePlayerFromAllRooms(playerId: string): { roomId: str
 }
 
 // ============================================================
+// Filtro para remover versiones alteradas (mix, remix, instrumental, live, etc)
+// Y también filtra canciones sin previewUrl válida
+// ============================================================
+function filterOutRemixes(songs: Song[]): Song[] {
+  const keywords = [
+    'mix',
+    'remix',
+    'instrumental',
+    'live',
+    'unplugged',
+    'acoustic',
+    'radio edit',
+    'extended',
+    'club mix',
+    'house mix',
+    'dub',
+    'bootleg',
+    'mashup',
+    'cover',
+    'version',
+    'edit',
+    'remaster',
+    'remix version'
+  ];
+
+  return songs.filter(song => {
+    // Filtrar por previewUrl válida
+    if (!song.previewUrl || song.previewUrl.trim() === '') {
+      return false;
+    }
+    const lowerName = song.name.toLowerCase();
+    return !keywords.some(keyword => lowerName.includes(keyword));
+  });
+}
+
+// ============================================================
 // Carga de canciones para modos que NO son year
 // ============================================================
 async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
@@ -138,13 +174,30 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
     switch (config.selectionType) {
       case 'genre':
         if (config.genre) {
-          return await deezer.searchByGenre(config.genre, 100);
+          console.log(`[fetchSongsForConfig] Fetching by genre: ${config.genre}`);
+          const songs = await deezer.searchByGenre(config.genre, 100);
+          console.log(`[fetchSongsForConfig] Got ${songs.length} songs from genre search`);
+          const filtered = filterOutRemixes(songs);
+          console.log(`[fetchSongsForConfig] After filtering remixes: ${filtered.length} songs`);
+          return filtered;
         }
         break;
         
       case 'artist':
         if (config.artist) {
-          return await deezer.searchByArtist(config.artist, 100);
+          console.log(`[fetchSongsForConfig] Fetching by artist: ${config.artist}`);
+          const songs = await deezer.searchByArtist(config.artist, 100);
+          console.log(`[fetchSongsForConfig] Got ${songs.length} songs from artist search`);
+          const filtered = filterOutRemixes(songs);
+          console.log(`[fetchSongsForConfig] After filtering remixes: ${filtered.length} songs`);
+          // Show first 3 and last 3
+          if (filtered.length > 0) {
+            console.log(`[fetchSongsForConfig] First 3: ${filtered.slice(0, 3).map(s => `"${s.name}" (preview: ${s.previewUrl ? 'YES' : 'NO'})`).join(', ')}`);
+            if (filtered.length > 3) {
+              console.log(`[fetchSongsForConfig] Last 3: ${filtered.slice(-3).map(s => `"${s.name}" (preview: ${s.previewUrl ? 'YES' : 'NO'})`).join(', ')}`);
+            }
+          }
+          return filtered;
         }
         break;
         
@@ -179,11 +232,13 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
 async function fetchSongsForVersus(type: string, value: string): Promise<Song[]> {
   switch (type) {
     case 'artist':
-      return await deezer.searchByArtist(value, 50);
+      const artistSongs = await deezer.searchByArtist(value, 50);
+      return filterOutRemixes(artistSongs);
     case 'year':
       return await deezer.searchByYear(parseInt(value), 25);
     case 'genre':
-      return await deezer.searchByGenre(value, 50);
+      const genreSongs = await deezer.searchByGenre(value, 50);
+      return filterOutRemixes(genreSongs);
     case 'decade':
       const decade = parseInt(value);
       return await deezer.searchByDecade(decade, decade + 9, 50);
@@ -385,8 +440,26 @@ export async function startGame(
       console.log(`[StartGame] Other mode (${config.selectionType}): fetching songs...`);
       const allSongs = await fetchSongsForConfig(config);
       console.log(`[StartGame] Fetched ${allSongs.length} songs total`);
-      room.allSongs = allSongs.filter(song => song.previewUrl !== null);
-      console.log(`[StartGame] Songs with preview: ${room.allSongs.length}/${allSongs.length}`);
+      
+      // Filtrar ESTRICTAMENTE: solo canciones con previewUrl válida (no null, no vacío)
+      room.allSongs = allSongs.filter(song => {
+        const isValid = song.previewUrl && song.previewUrl.trim().length > 0;
+        if (!isValid) {
+          console.log(`[StartGame] Filtering out song without valid preview: "${song.name}" by ${song.artist}`);
+        }
+        return isValid;
+      });
+      
+      console.log(`[StartGame] Songs with valid preview: ${room.allSongs.length}/${allSongs.length}`);
+      
+      // Mostrar primeras 3 y últimas 3 canciones para debug
+      if (room.allSongs.length > 0) {
+        console.log(`[StartGame] First 3 songs with preview:`, room.allSongs.slice(0, 3).map(s => `"${s.name}" - ${s.artist}`));
+        if (room.allSongs.length > 3) {
+          console.log(`[StartGame] Last 3 songs with preview:`, room.allSongs.slice(-3).map(s => `"${s.name}" - ${s.artist}`));
+        }
+      }
+      
       room.totalRounds = calculateTotalRounds(config, room.allSongs.length);
       console.log(`[StartGame] Final config - Mode: ${config.selectionType}, selectedRounds: ${config.totalRounds}, calculatedRounds: ${room.totalRounds}, songsPerRound: ${config.songsPerRound}`);
       // Emitir progreso completado para otros modos
@@ -502,6 +575,14 @@ export async function generateRound(roomId: string): Promise<Round | null> {
     // Marcar como usadas
     selectedSongs.forEach(song => room.usedSongIds.add(song.id));
   }
+  
+  // Verificar que TODAS las canciones tienen previewUrl válida antes de enviar al cliente
+  const invalidSongs = selectedSongs.filter(song => !song.previewUrl || song.previewUrl.trim().length === 0);
+  if (invalidSongs.length > 0) {
+    console.error(`[GenerateRound] WARNING: ${invalidSongs.length} songs without valid preview URL:`, invalidSongs.map(s => `"${s.name}" - ${s.artist}`));
+  }
+  
+  console.log(`[GenerateRound] Round ${roundNumber} songs:`, selectedSongs.map((s, i) => `${i+1}. "${s.name}" by ${s.artist} (preview: ${s.previewUrl ? s.previewUrl.substring(0, 50) + '...' : 'NONE'})`));
   
   const round: Round = {
     roundNumber,

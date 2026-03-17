@@ -79,12 +79,8 @@ export default function VoteResults({ round, votes, players, isHost, totalRounds
 
       <div className="vote-summary" style={{ marginBottom: '1.5rem', maxWidth: 'min(95vw, 2750px)', margin: '1.5rem auto 1.5rem auto' }}>
         {songsWithVotes.length > 0 ? (
-          <div className="vote-results-grid" style={{ 
+          <div className={`vote-results-grid vote-results-count-${songsWithVotes.length}`} style={{ 
             display: 'grid',
-            gridTemplateColumns: songsWithVotes.length === 1 ? '1fr' : 
-                                  songsWithVotes.length === 2 ? 'repeat(2, 1fr)' :
-                                  songsWithVotes.length === 3 ? 'repeat(3, 1fr)' :
-                                  'repeat(3, 1fr)',
             gap: 'clamp(0.75rem, 1.2vw, 1rem)', 
             width: '100%',
             maxWidth: 'min(95vw, 1400px)',

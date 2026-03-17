@@ -27,16 +27,34 @@ function createSimpleAudio(audioElement: HTMLAudioElement) {
       audioElement.volume = volumePercent / 100;
       audioElement.currentTime = 0;
       
+      // Flag para asegurar que onComplete se llamara solo UNA VEZ
+      let hasCompleted = false;
+      
       const playPromise = audioElement.play();
       if (playPromise !== undefined) {
-        playPromise.catch(err => console.error('Error playing:', err));
+        playPromise
+          .then(() => {
+            console.log(`[Audio] Playing started successfully`);
+          })
+          .catch(err => {
+            console.error(`[Audio] Error playing:`, err);
+            if (onComplete && !hasCompleted) {
+              hasCompleted = true;
+              console.log(`[Audio] Calling onComplete due to error`);
+              onComplete();
+            }
+          });
       }
 
       // Detener después de 10 segundos
       const timeoutId = setTimeout(() => {
         audioElement.pause();
         audioElement.currentTime = 0;
-        if (onComplete) onComplete();
+        if (onComplete && !hasCompleted) {
+          hasCompleted = true;
+          console.log(`[Audio] Calling onComplete after 10s timeout`);
+          onComplete();
+        }
       }, 10000);
 
       return () => clearTimeout(timeoutId);
@@ -114,14 +132,31 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
     if (previewsStarted && currentPreviewIndex >= 0 && currentPreviewIndex < round.songs.length && !previewsPlayed) {
       const song = round.songs[currentPreviewIndex];
       
-      if (audioRef.current && song.previewUrl) {
+      console.log(`[GamePlay PREVIEW] Index ${currentPreviewIndex}/${round.songs.length}: "${song.name}" by ${song.artist}`, {
+        hasPreviewUrl: !!song.previewUrl,
+        previewUrlLength: song.previewUrl?.length || 0,
+        previewUrlValid: !!song.previewUrl && song.previewUrl.trim() !== ''
+      });
+      
+      if (audioRef.current && song.previewUrl && song.previewUrl.trim() !== '') {
+        console.log(`[GamePlay PREVIEW] ✓ PLAYING song ${currentPreviewIndex + 1}/${round.songs.length}: ${song.name}`);
         audioRef.current.src = song.previewUrl;
         const audioHelper = createSimpleAudio(audioRef.current);
         cleanupFn = audioHelper.play(() => {
+          console.log(`[GamePlay PREVIEW] ✓ FINISHED playing song ${currentPreviewIndex + 1}, moving to ${currentPreviewIndex + 2}`);
           setCurrentPreviewIndex(prev => prev + 1);
         });
+      } else if (!song.previewUrl || song.previewUrl.trim() === '') {
+        // Si no hay preview URL, saltar esta canción y pasar a la siguiente
+        console.warn(`[GamePlay PREVIEW] ✗ SKIPPING song ${currentPreviewIndex + 1}/${round.songs.length} (${song.name}): NO PREVIEW URL`);
+        setCurrentPreviewIndex(prev => prev + 1);
+      } else {
+        // Si no hay audioRef, saltar
+        console.warn(`[GamePlay PREVIEW] ✗ SKIPPING song ${currentPreviewIndex + 1}/${round.songs.length}: NO AUDIO REF`);
+        setCurrentPreviewIndex(prev => prev + 1);
       }
     } else if (previewsStarted && currentPreviewIndex >= round.songs.length && !previewsPlayed) {
+      console.log(`[GamePlay PREVIEW] ✓ ALL PREVIEWS FINISHED - Total songs: ${round.songs.length}`);
       setShowingPreview(false);
       setPreviewsPlayed(true);
     }
@@ -196,6 +231,8 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
   };
 
   const handleReplayPreview = (song: any) => {
+    console.log(`[GamePlay] handleReplayPreview called for song: ${song.name}, previewId: ${playingPreviewId}, songId: ${song.id}`);
+    
     // Limpiar el playback anterior
     if (playbackCleanupRef.current) {
       playbackCleanupRef.current();
@@ -204,6 +241,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
 
     if (playingPreviewId === song.id) {
       // Detener reproducción actual
+      console.log(`[GamePlay] Stopping playback for ${song.name}`);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -216,14 +254,18 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
         audioRef.current.currentTime = 0;
       }
       
-      if (audioRef.current && song.previewUrl) {
+      if (audioRef.current && song.previewUrl && song.previewUrl.trim() !== '') {
+        console.log(`[GamePlay] Starting preview for ${song.name}, URL: ${song.previewUrl.substring(0, 50)}...`);
         audioRef.current.src = song.previewUrl;
         const audioHelper = createSimpleAudio(audioRef.current);
         const cleanup = audioHelper.play(() => {
+          console.log(`[GamePlay] Preview finished for ${song.name}, clearing playingPreviewId`);
           setPlayingPreviewId(null);
         });
         playbackCleanupRef.current = cleanup;
         setPlayingPreviewId(song.id);
+      } else {
+        console.warn(`[GamePlay] Cannot replay preview for ${song.name}: ${!song.previewUrl ? 'no previewUrl' : 'empty previewUrl'}`);
       }
     }
   };
