@@ -79,6 +79,11 @@ function App() {
       console.log(message);
     });
 
+    socket.on('game-loading', ({ loadedYears, totalYears }: { loadedYears: number; totalYears: number }) => {
+      setLoadingProgress({ loaded: loadedYears, total: totalYears });
+      setCurrentScreen('loading');
+    });
+
     socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, selectionType, mode }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string; mode?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
@@ -341,6 +346,7 @@ function App() {
           votes={votes}
           isHost={isHost}
           roomId={room!.id}
+          totalRounds={totalRounds}
           onNextRound={() => socket.emit('next-round', { roomId: room!.id })}
           onEndGame={() => socket.emit('end-game', { roomId: room!.id })}
         />;

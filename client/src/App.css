@@ -468,6 +468,10 @@ button.save {
   50% { transform: scale(1.1); }
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
 /* Responsive */
 @media (max-width: 480px) {
@@ -546,38 +550,81 @@ button.save {
   }
 }
 
-/* Grid para canciones post-preview - 2x3 */
+/* Grid para canciones post-preview - Responsive */
 .songs-voting-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: clamp(0.8rem, 2vw, 1.2rem);
   width: 100%;
+  max-width: 100%;
   margin: 0 auto;
   padding: 0 0.5rem;
+  justify-content: center;
 }
 
 /* Mobile - keep 2 columns con más espaciado */
 @media (max-width: 600px) {
-  .songs-voting-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: clamp(1.2rem, 2.5vw, 1.4rem);
-    margin-top: 2rem;
+  .songs-voting-grid,
+  .songs-grid-count-2,
+  .songs-grid-count-3,
+  .songs-grid-count-4,
+  .songs-grid-count-5,
+  .songs-grid-count-6 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: clamp(1.2rem, 2.5vw, 1.4rem) !important;
+    margin-top: 2rem !important;
   }
 }
 
 /* Tablet - keep 2 columns */
 @media (min-width: 601px) and (max-width: 1023px) {
-  .songs-voting-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: clamp(0.8rem, 1.5vw, 1rem);
+  .songs-voting-grid,
+  .songs-grid-count-2,
+  .songs-grid-count-3,
+  .songs-grid-count-4,
+  .songs-grid-count-5,
+  .songs-grid-count-6 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: clamp(0.8rem, 1.5vw, 1rem) !important;
   }
 }
 
-/* Desktop - keep 3 columns original */
+/* Desktop - Adaptive columns based on song count */
 @media (min-width: 1024px) {
   .songs-voting-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, 1fr) !important;
     gap: clamp(0.8rem, 2vw, 1.2rem);
+    max-width: 1200px;
+  }
+
+  /* 2 canciones - 2 cols */
+  .songs-grid-count-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* 3 canciones - 3 cols */
+  .songs-grid-count-3 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  /* 4 canciones - 4 cols */
+  .songs-grid-count-4 {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  /* 5 canciones - 3 cols sin spans, todos exactamente igual */
+  .songs-grid-count-5 {
+    grid-template-columns: repeat(3, 1fr) !important;
+    max-width: 1200px !important;
+  }
+  .songs-grid-count-5 > .song-card img {
+    width: clamp(130px, 25vw, 180px) !important;
+    height: clamp(130px, 25vw, 180px) !important;
+  }
+
+  /* 6 canciones - 3 cols, 2 rows */
+  .songs-grid-count-6 {
+    grid-template-columns: repeat(3, 1fr) !important;
   }
 }
 .artist-grid,
@@ -773,6 +820,107 @@ header {
 .selector-subtitle {
   font-size: clamp(0.85rem, 2vw, 1rem) !important;
   margin-bottom: clamp(0.8rem, 2vw, 1.5rem) !important;
+}
+
+/* Vote Results Grid - Responsive Layout */
+.vote-results-grid {
+  display: grid !important;
+  gap: clamp(0.75rem, 1.2vw, 1rem) !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  justify-items: center !important;
+  padding: 0 clamp(0.5rem, 2vw, 1rem) !important;
+}
+
+/* En pantallas pequeñas (móvil/tablet vertical) - siempre 2 columnas */
+@media (max-width: 768px) {
+  .vote-results-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    max-width: min(95vw, 600px) !important;
+  }
+}
+
+/* En pantallas medianas - 2 o 3 columnas según el contenido */
+@media (min-width: 769px) and (max-width: 1023px) {
+  .vote-results-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+    max-width: min(95vw, 900px) !important;
+  }
+}
+
+/* En pantallas grandes - 3 columnas con centrado */
+@media (min-width: 1024px) {
+  .vote-results-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    max-width: 1400px !important;
+  }
+}
+
+/* Vote Results Cards - Responsive Layout */
+.vote-result-card {
+  transition: all 0.3s ease;
+}
+
+/* En todas las pantallas - layout consistente */
+.vote-result-card {
+  display: grid !important;
+  grid-template-columns: 1fr auto !important;
+  grid-template-rows: auto auto auto !important;
+  gap: clamp(0.6rem, 1vw, 0.9rem) !important;
+}
+
+.vote-card-image {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  justify-self: center !important;
+}
+
+.vote-card-info {
+  grid-column: 2 !important;
+  grid-row: 1 / 4 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding-left: clamp(0.6rem, 1vw, 0.9rem) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Song info sizing for mobile */
+.vote-card-song-info {
+  font-size: 0.75;
+}
+
+@media (max-width: 768px) {
+  .vote-card-song-info > div:first-child {
+    font-size: clamp(0.52rem, 1.125vw, 0.71rem) !important;
+  }
+
+  .vote-card-song-info > div:last-child {
+    font-size: clamp(0.45rem, 0.75vw, 0.56rem) !important;
+  }
+}
+
+/* Vote bar and percentage visibility */
+.vote-bar {
+  display: flex !important;
+}
+
+.vote-percentage {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .vote-bar {
+    display: none !important;
+  }
+
+  .vote-percentage {
+    display: block !important;
+  }
+
+  .vote-result-card {
+    width: clamp(185px, 29.6vw, 388px) !important;
+    min-height: auto !important;
+  }
 }
 
 .selector-grid {

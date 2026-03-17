@@ -17,6 +17,8 @@ const io = new Server(httpServer, {
         'http://localhost:3000',
         'http://localhost:5173',
         'http://localhost:5174',
+        'http://192.168.1.50:5173',
+        'http://192.168.1.50:3001',
       ];
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
@@ -36,6 +38,8 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:5174',
+    'http://192.168.1.50:5173',
+    'http://192.168.1.50:3001',
   ],
   credentials: true,
 }));
@@ -118,6 +122,17 @@ io.on('connection', (socket) => {
   socket.on('start-timer', ({ roomId }) => {
     gameManager.startTimer(roomId);
     io.to(roomId).emit('timer-started');
+  });
+
+  socket.on('start-previews', ({ roomId }) => {
+    console.log(`[start-previews] Host starting previews in room ${roomId}`);
+    io.to(roomId).emit('previews-started');
+  });
+
+  socket.on('start-voting', ({ roomId }) => {
+    console.log(`[start-voting] Host starting voting in room ${roomId}`);
+    gameManager.startTimer(roomId);
+    io.to(roomId).emit('voting-started');
   });
 
   socket.on('toggle-pause', ({ roomId }) => {
@@ -215,6 +230,7 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
+  console.log(`Accessible locally at http://192.168.1.50:${PORT}`);
 });

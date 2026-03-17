@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { socket } from '../socket';
 import Header from '../components/Header';
-import { Music } from 'lucide-react';
+import { Music, Loader } from 'lucide-react';
 import type { Round, GameMode } from '../types';
 
 interface GamePlayProps {
@@ -53,7 +53,8 @@ function createSimpleAudio(audioElement: HTMLAudioElement) {
 export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode, selectionType, onTimerEnd, onBack }: GamePlayProps) {
   const [selectedSong, setSelectedSong] = useState<string | null>(null);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(round.roundNumber === 1 ? -1 : 0);
-  const [previewsPlayed, setPreviewsPlayed] = useState(false); // Always start with previews
+  const [previewsPlayed, setPreviewsPlayed] = useState(false);
+  const [previewsStarted, setPreviewsStarted] = useState(false);
   const [timer, setTimer] = useState(10);
   const [showingPreview, setShowingPreview] = useState(true);
   const [votingStarted, setVotingStarted] = useState(false);
@@ -78,14 +79,27 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
   // Reiniciar estado cuando cambia de ronda
   useEffect(() => {
     // Limpiar el playback anterior
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     if (playbackCleanupRef.current) {
       playbackCleanupRef.current();
       playbackCleanupRef.current = null;
     }
     
     setSelectedSong(null);
-    setCurrentPreviewIndex(round.roundNumber === 1 ? -1 : 0);
-    setPreviewsPlayed(false);
+    // Ronda 1: mostrar explicación (-1). Ronda 2+: comenzar previews automáticamente
+    if (round.roundNumber === 1) {
+      setCurrentPreviewIndex(-1);
+      setPreviewsPlayed(false);
+      setPreviewsStarted(false);
+    } else {
+      // Ronda 2+: comienzan las previews automáticamente
+      setCurrentPreviewIndex(0);
+      setPreviewsPlayed(false);
+      setPreviewsStarted(true);
+    }
     setShowingPreview(true);
     setVotingStarted(false);
     setTimer(10);
@@ -97,7 +111,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
   useEffect(() => {
     let cleanupFn: (() => void) | undefined;
 
-    if (currentPreviewIndex >= 0 && currentPreviewIndex < round.songs.length && !previewsPlayed) {
+    if (previewsStarted && currentPreviewIndex >= 0 && currentPreviewIndex < round.songs.length && !previewsPlayed) {
       const song = round.songs[currentPreviewIndex];
       
       if (audioRef.current && song.previewUrl) {
@@ -107,7 +121,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
           setCurrentPreviewIndex(prev => prev + 1);
         });
       }
-    } else if (currentPreviewIndex >= round.songs.length && !previewsPlayed) {
+    } else if (previewsStarted && currentPreviewIndex >= round.songs.length && !previewsPlayed) {
       setShowingPreview(false);
       setPreviewsPlayed(true);
     }
@@ -115,7 +129,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
     return () => {
       if (cleanupFn) cleanupFn();
     };
-  }, [currentPreviewIndex, round.songs, previewsPlayed]);
+  }, [currentPreviewIndex, round.roundNumber, previewsPlayed, previewsStarted, round.songs]);
 
   // Timer countdown
   useEffect(() => {
@@ -154,6 +168,27 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
       socket.off('vote-submitted', handleVoteUpdate);
     };
   }, [round.songs, votingStarted, onTimerEnd]);
+
+  // Escuchar cuando el host comienza las previews
+  useEffect(() => {
+    const handlePreviewsStarted = () => {
+      console.log('[GamePlay] Previews started event received, round:', round.roundNumber, 'songs:', round.songs.length);
+      setPreviewsStarted(true);
+      setCurrentPreviewIndex(0); // Pasar de -1 a 0 para comenzar la reproducción
+    };
+
+    const handleVotingStarted = () => {
+      console.log('[GamePlay] Voting started event received');
+      setVotingStarted(true);
+    };
+
+    socket.on('previews-started', handlePreviewsStarted);
+    socket.on('voting-started', handleVotingStarted);
+    return () => {
+      socket.off('previews-started', handlePreviewsStarted);
+      socket.off('voting-started', handleVotingStarted);
+    };
+  }, [round.roundNumber]);
 
   const handleSongSelect = (songId: string) => {
     setSelectedSong(songId);
@@ -199,8 +234,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
       audioRef.current.currentTime = 0;
     }
     setPlayingPreviewId(null);
-    setVotingStarted(true);
-    socket.emit('start-timer', { roomId });
+    socket.emit('start-voting', { roomId });
   };
 
   return (
@@ -236,13 +270,20 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
           <p style={{ fontSize: 'clamp(0.8rem, 3vw, 1rem)', marginBottom: 'clamp(1rem, 1.5vw, 1.5rem)' }}>
             Escucharás <strong>{round.songs.length} canciones</strong> con previews de 10 segundos cada una
           </p>
-          <button 
-            className="primary" 
-            onClick={() => setCurrentPreviewIndex(0)}
-            style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', padding: 'clamp(0.8rem, 2vw, 1.2rem) clamp(1.5rem, 4vw, 2rem)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(0.3rem, 1vw, 0.5rem)', margin: '0 auto' }}
-          >
-            <Music size={20} /> Comenzar Previews
-          </button>
+          {isHost ? (
+            <button 
+              className="primary" 
+              onClick={() => socket.emit('start-previews', { roomId })}
+              style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', padding: 'clamp(0.8rem, 2vw, 1.2rem) clamp(1.5rem, 4vw, 2rem)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(0.3rem, 1vw, 0.5rem)', margin: '0 auto' }}
+            >
+              <Music size={20} /> Comenzar Previews
+            </button>
+          ) : (
+            <div style={{ fontSize: 'clamp(0.75rem, 2vw, 0.95rem)', opacity: 0.7, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem' }}>
+              <Loader size={20} color="var(--color-principal)" style={{ animation: 'spin 2s linear infinite', display: 'inline-flex' }} />
+              Esperando a que el host comience las previews...
+            </div>
+          )}
         </div>
       )}
 
@@ -322,7 +363,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
             padding: '0 clamp(0.5rem, 2vw, 1rem)',
             marginBottom: 'clamp(1rem, 2vw, 1.5rem)'
           }}>
-            <div className="songs-voting-grid" style={{
+            <div className={`songs-voting-grid songs-grid-count-${round.songs.length}`} style={{
               justifyContent: 'center',
               justifyItems: 'center',
               width: '100%',
@@ -333,11 +374,6 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
               const isSelected = selectedSong === song.id;
               const isEliminate = gameMode === 'eliminate';
               const totalSongs = round.songs.length;
-              
-              // Para 5 canciones, solo renderizar los primeros 3 en el grid
-              if (totalSongs === 5 && index >= 3) {
-                return null;
-              }
               
               return (
                 <div
@@ -411,7 +447,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                       }}
                     />
                     
-                    {previewsPlayed && !votingStarted && isHost && (
+                    {previewsPlayed && !votingStarted && (
                       <div
                         onMouseEnter={(e) => {
                           const overlay = e.currentTarget as HTMLElement;
@@ -492,158 +528,6 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                 </div>
               );
             })}
-            {/* Para 5 canciones, renderizar los últimos 2 items centrados en su propio contenedor */}
-            {round.songs.length === 5 && (
-              <div style={{
-                gridColumn: '1 / -1',
-                display: 'flex',
-                justifyContent: 'center',
-                gap: 'clamp(1rem, 3vw, 2rem)',
-                marginTop: 'clamp(0rem, 1vw, 0.5rem)'
-              }}>
-                {round.songs.slice(3).map((song) => {
-                  const voteCount = voteCounts[song.id] || 0;
-                  const isSelected = selectedSong === song.id;
-                  const isEliminate = gameMode === 'eliminate';
-                  
-                  return (
-                    <div
-                      key={song.id}
-                      className={`song-card ${isSelected ? 'selected' : ''}`}
-                      onClick={() => votingStarted && previewsPlayed ? handleSongSelect(song.id) : null}
-                      onMouseEnter={(e) => {
-                        if (votingStarted && previewsPlayed) {
-                          const target = e.currentTarget as HTMLElement;
-                          const imgElement = target.querySelector('img') as HTMLImageElement;
-                          if (imgElement) {
-                            imgElement.style.boxShadow = isEliminate 
-                              ? '0 20px 50px rgba(250, 86, 73, 0.6)' 
-                              : '0 20px 50px rgba(139, 255, 98, 0.6)';
-                          }
-                          target.style.transform = 'translateY(-10px)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        const target = e.currentTarget as HTMLElement;
-                        const imgElement = target.querySelector('img') as HTMLImageElement;
-                        if (imgElement) {
-                          imgElement.style.boxShadow = '0 10px 30px rgba(0,0,0,0.4)';
-                        }
-                        target.style.transform = isSelected ? 'scale(1.05)' : 'translateY(0)';
-                      }}
-                      style={{ 
-                        cursor: votingStarted && previewsPlayed ? 'pointer' : 'default', 
-                        opacity: previewsPlayed ? 1 : 0.5,
-                        position: 'relative',
-                      }}
-                    >
-                      {votingStarted && voteCount > 0 && (
-                        <div style={{
-                          position: 'absolute',
-                          top: 'clamp(8px, 2vw, 12px)',
-                          right: 'clamp(8px, 2vw, 12px)',
-                          backgroundColor: gameMode === 'eliminate' ? 'var(--color-eliminate)' : 'var(--color-save)',
-                          color: 'white',
-                          borderRadius: '50%',
-                          width: 'clamp(35px, 8vw, 45px)',
-                          height: 'clamp(35px, 8vw, 45px)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 'clamp(1rem, 3vw, 1.2rem)',
-                          fontWeight: 'bold',
-                          zIndex: 10,
-                          boxShadow: gameMode === 'eliminate' 
-                            ? '0 0 20px rgba(250, 86, 73, 0.6)' 
-                            : '0 0 20px rgba(139, 255, 98, 0.6)'
-                        }}>
-                          {voteCount}
-                        </div>
-                      )}
-                      
-                      <div style={{
-                        position: 'relative',
-                        display: 'inline-block'
-                      }}>
-                        <img 
-                          src={song.albumArt} 
-                          alt={song.name}
-                          style={{
-                            boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
-                            transition: 'all 0.3s ease',
-                            display: 'block'
-                          }}
-                        />
-                        
-                        {previewsPlayed && !votingStarted && isHost && (
-                          <div
-                            onMouseEnter={(e) => {
-                              const overlay = e.currentTarget as HTMLElement;
-                              overlay.style.opacity = '1';
-                            }}
-                            onMouseLeave={(e) => {
-                              const overlay = e.currentTarget as HTMLElement;
-                              overlay.style.opacity = '0';
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              width: '100%',
-                              height: '100%',
-                              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: '16px',
-                              opacity: '0',
-                              transition: 'opacity 0.3s ease',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleReplayPreview(song);
-                              }}
-                              style={{
-                                backgroundColor: playingPreviewId === song.id ? 'var(--color-eliminate)' : 'var(--color-principal)',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '50%',
-                                width: 'clamp(50px, 12vw, 70px)',
-                                height: 'clamp(50px, 12vw, 70px)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                                fontSize: 'clamp(1.5rem, 4vw, 2rem)',
-                                transition: 'all 0.3s ease',
-                                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
-                                transform: 'scale(1)'
-                              }}
-                              onMouseEnter={(e) => {
-                                const btn = e.currentTarget as HTMLElement;
-                                btn.style.transform = 'scale(1.1)';
-                              }}
-                              onMouseLeave={(e) => {
-                                const btn = e.currentTarget as HTMLElement;
-                                btn.style.transform = 'scale(1)';
-                              }}
-                            >
-                              {playingPreviewId === song.id ? '⏸' : '▶'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <h3 style={{ fontSize: 'clamp(0.85rem, 3vw, 1.1rem)', textAlign: 'center', marginTop: 'clamp(0.5rem, 2vw, 0.8rem)', marginBottom: '-0.55rem', lineHeight: '1', padding: '0' }}>{song.name}</h3>
-                      <p style={{ fontSize: 'clamp(0.75rem, 2.5vw, 0.95rem)', margin: 0, opacity: 0.8, textAlign: 'center', lineHeight: '1', padding: '0' }}>{song.artist}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
             </div>
           </div>
         </>
