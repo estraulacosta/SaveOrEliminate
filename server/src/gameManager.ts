@@ -143,16 +143,45 @@ function filterOutRemixes(songs: Song[]): Song[] {
     'unplugged',
     'acoustic',
     'radio edit',
-    'extended',
     'club mix',
     'house mix',
     'dub',
     'bootleg',
     'mashup',
     'cover',
-    'version',
     'edit',
-    'remaster',
+    'remix version'
+  ];
+
+  return songs.filter(song => {
+    // Filtrar por previewUrl válida
+    if (!song.previewUrl || song.previewUrl.trim() === '') {
+      return false;
+    }
+    const lowerName = song.name.toLowerCase();
+    return !keywords.some(keyword => lowerName.includes(keyword));
+  });
+}
+
+// ============================================================
+// Filtro especial para Soundtrack: PERMITE instrumentales
+// ============================================================
+function filterOutRemixesAllowInstrumental(songs: Song[]): Song[] {
+  const keywords = [
+    'mix',
+    'remix',
+    // 'instrumental' - PERMITIDO para Soundtrack
+    'live',
+    'unplugged',
+    'acoustic',
+    'radio edit',
+    'club mix',
+    'house mix',
+    'dub',
+    'bootleg',
+    'mashup',
+    'cover',
+    'edit',
     'remix version'
   ];
 
@@ -175,10 +204,13 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
       case 'genre':
         if (config.genre) {
           console.log(`[fetchSongsForConfig] Fetching by genre: ${config.genre}`);
-          const songs = await deezer.searchByGenre(config.genre, 100);
+          const songs = await deezer.searchByGenre(config.genre, 500);
           console.log(`[fetchSongsForConfig] Got ${songs.length} songs from genre search`);
-          const filtered = filterOutRemixes(songs);
-          console.log(`[fetchSongsForConfig] After filtering remixes: ${filtered.length} songs`);
+          // Para Soundtrack: permitir instrumentales. Para otros géneros: filtrar todo.
+          const filtered = config.genre === 'Soundtrack' 
+            ? filterOutRemixesAllowInstrumental(songs)
+            : filterOutRemixes(songs);
+          console.log(`[fetchSongsForConfig] After filtering remixes: ${filtered.length} songs (${config.genre === 'Soundtrack' ? 'instrumentals ALLOWED' : 'instrumentals FILTERED'})`);
           return filtered;
         }
         break;

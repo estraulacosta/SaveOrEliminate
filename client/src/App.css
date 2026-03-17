@@ -180,7 +180,7 @@ input::placeholder {
 
 /* Buttons */
 button {
-  border: none;
+  border: 2px solid;
   cursor: pointer;
   font-family: var(--font-bold);
   font-weight: 800; /* Extra bold */
@@ -197,12 +197,14 @@ button {
   width: 100%;
   position: relative;
   overflow: hidden;
+  background-color: transparent;
 }
 
 button:hover:not(:disabled) {
   transform: translateY(-4px); 
   filter: brightness(1.1);
   box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.4);
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
 button:active:not(:disabled) {
@@ -219,35 +221,47 @@ button:disabled {
 
 /* Primary Button (Use for neutral confirms) */
 button.primary {
-  background-color: var(--color-principal);
-  color: #fff;
+  border-color: var(--color-principal);
+  color: var(--color-principal);
+}
+
+button.primary:hover:not(:disabled) {
+  background-color: rgba(128, 22, 199, 0.1);
   box-shadow: 0 10px 20px -5px rgba(128, 22, 199, 0.4);
 }
 
 /* Secondary Button (Outlined) */
 button.secondary {
   background-color: transparent;
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
   color: var(--color-text);
   padding: 1rem 2rem; /* Slightly smaller padding */
 }
 
 button.secondary:hover {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
   background-color: rgba(255, 255, 255, 0.05);
 }
 
 /* Eliminate Button */
 button.eliminate {
-  background-color: var(--color-eliminate);
-  color: #fff;
+  border-color: var(--color-eliminate);
+  color: var(--color-eliminate);
+}
+
+button.eliminate:hover:not(:disabled) {
+  background-color: rgba(250, 86, 73, 0.1);
   box-shadow: 0 10px 20px -5px rgba(250, 86, 73, 0.4);
 }
 
 /* Save Button */
 button.save {
-  background-color: var(--color-save);
-  color: #1E1921; /* Strong contrast */
+  border-color: var(--color-save);
+  color: var(--color-save);
+}
+
+button.save:hover:not(:disabled) {
+  background-color: rgba(139, 255, 98, 0.1);
   box-shadow: 0 10px 20px -5px rgba(139, 255, 98, 0.4);
 }
 

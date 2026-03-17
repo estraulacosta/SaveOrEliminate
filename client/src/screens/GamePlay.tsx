@@ -281,7 +281,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
 
   return (
     <>
-      <Header showBackButton={true} showVolume={true} onBack={onBack} />
+      <Header showBackButton={false} showVolume={true} onBack={onBack} />
       <audio ref={audioRef} style={{ display: 'none' }} />
 
       <h1 style={{ marginTop: 'clamp(-0.5rem, -2vw, 0rem)', marginBottom: 'clamp(1rem, 2vw, 1.5rem)', fontSize: 'clamp(1.5rem, 6.25vw, 2.5rem)' }}>
@@ -522,9 +522,9 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                             handleReplayPreview(song);
                           }}
                           style={{
-                            backgroundColor: playingPreviewId === song.id ? 'var(--color-eliminate)' : 'var(--color-principal)',
-                            color: 'white',
-                            border: 'none',
+                            backgroundColor: 'transparent',
+                            color: playingPreviewId === song.id ? 'var(--color-eliminate)' : 'var(--color-principal)',
+                            border: `2px solid ${playingPreviewId === song.id ? 'var(--color-eliminate)' : 'var(--color-principal)'}`,
                             borderRadius: '50%',
                             width: 'clamp(50px, 12vw, 70px)',
                             height: 'clamp(50px, 12vw, 70px)',

@@ -397,10 +397,10 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Peter Manjarrés', 'Rafael Orozco', 'Silvestre Dangond', 'Los Diablitos', 'Los Chiches del Vallenato',
         'Los Gigantes del Vallenato', 'Los Inquietos del Vallenato', 'Nelson Velásquez', 'Jean Carlos Centeno', 
         'Alfredo Gutiérrez', 'Alejo Durán', 'Luis Enrique Martínez', 'Pacho Rada', 'Emiliano Zuleta', 
-        'Poncho Zuleta', 'Iván Villazón', 'Beto Zabaleta', 'Silvio Brito', 'Yeison Jiménez', 
+        'Poncho Zuleta', 'Iván Villazón', 'Beto Zabaleta', 'Silvio Brito', 
         'Miguel Morales', 'Patricia Teherán', 'Kaleth Morales', 'Hebert Vargas', 'Alex Manga', 'Daniel Calderón',
         'Omar Geles', 'Elder Dayán Díaz', 'Mono Zabaleta', 'Kvrass', 'Luifer Cuello', 
-        'Adriana Lucía', 'Gusi', 'Lucas Dangond', 'Los Embajadores', 'Luis Mario Oñate'
+        'Adriana Lucía', 'Gusi', 'Lucas Dangond', 'Los Embajadores', 'Luis Mario Oñate', 'Martin Elias', 'Rafael Escalona'
     ],
     'bachata': [
         'Juan Luis Guerra', 'Aventura', 'Romeo Santos', 'Antony Santos', 'Xtreme', 
@@ -504,14 +504,24 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Maceo Plex', 'Dixon', 'Âme', 'Kobosil', 'Blawan'
     ],
     'soundtrack': [
-        'Hans Zimmer', 'John Williams', 'Danny Elfman', 'Michael Giacchino', 'Alan Menken', 
-        'Koji Kondo', 'Nobuo Uematsu', 'Yoko Shimomura', 'Austin Wintory', 'Clint Mansell',
-        'Ennio Morricone', 'Vangelis', 'Howard Shore', 'James Horner', 'Jerry Goldsmith', 
-        'Bernard Herrmann', 'Joe Hisaishi', 'Ludwig Göransson', 'Max Richter', 'Jóhann Jóhannsson', 
-        'Ryuichi Sakamoto', 'Thomas Newman', 'Alexandre Desplat', 'Ramin Djawadi', 'Bear McCreary', 
-        'John Barry', 'Gustavo Santaolalla', 'Nino Rota', 'Maurice Jarre', 'Basil Poledouris',
-        'Philip Glass', 'Carter Burwell', 'Hildur Guðnadóttir', 'Nicholas Britell', 'Daniel Pemberton', 
-        'Marco Beltrami', 'Mark Mancina', 'Trevor Rabin', 'Harry Gregson-Williams', 'Junkie XL'
+        'Ludwig Göransson', 'Daniel Blumberg', 'Volker Bertelmann', 'Hans Zimmer', 'Jon Batiste',
+        'Atticus Ross', 'Trent Reznor', 'Hildur Guðnadóttir', 'Alexandre Desplat', 'Justin Hurwitz',
+        'Ennio Morricone', 'Steven Price', 'Mychael Danna', 'Ludovic Bource', 'Michael Giacchino',
+        'A.R. Rahman', 'Dario Marianelli', 'Gustavo Santaolalla', 'Jan A.P. Kaczmarek', 'Howard Shore',
+        'Elliot Goldenthal', 'Tan Dun', 'John Corigliano', 'Nicola Piovani', 'James Horner',
+        'Gabriel Yared', 'Luis Bacalov', 'John Williams', 'Alan Menken', 'John Barry',
+        'Dave Grusin', 'Ryuichi Sakamoto', 'Herbie Hancock', 'Maurice Jarre', 'Bill Conti',
+        'Vangelis', 'Michael Gore', 'Georges Delerue', 'Giorgio Moroder', 'Jerry Goldsmith',
+        'Ramin Djawadi', 'Bear McCreary', 'Max Richter', 'Nicholas Britell', 'Jeff Russo',
+        'Cristobal Tapia de Veer', 'Murray Gold', 'Siddhartha Khosla', 'Blake Neely', 'Jeff Beal',
+        'Martin Phipps', 'Kyle Dixon', 'Michael Stein', 'Carlos Rafael Rivera', 'Mac Quayle',
+        'Daniel Pemberton', 'Lorne Balfe', 'Isobel Waller-Bridge', 'Labrinth', 'Kris Bowers',
+        'Sean Callery', 'Mark Snow', 'Angelo Badalamenti', 'W.G. Snuffy Walden', 'Trevor Morris',
+        'Christopher Lennertz', 'Dominik Scherrer', 'David Arnold', 'Mike Post', 'Danny Elfman',
+        'Nobuo Uematsu', 'Koji Kondo', 'Austin Wintory', 'Darren Korb', 'Lena Raine',
+        'Mick Gordon', 'Yoko Shimomura', 'Jeremy Soule', 'Shoji Meguro', 'Jesper Kyd',
+        'Yasunori Mitsuda', 'Martin O\'Donnell', 'Borislav Slavov', 'Gareth Coker', 'Keiichi Okabe',
+        'Masayoshi Soken', 'Christopher Tin', 'Grant Kirkhope', 'Akira Yamaoka', 'Inon Zur'
     ],
 };
 
@@ -716,9 +726,21 @@ export async function searchByGenre(genre: string, limit: number = 50): Promise<
           continue;
         }
 
-        // Procesar las canciones
+        // Procesando las canciones: solo del artista exacto que buscamos
         const tracks = topTracksResponse.data.data
-          .filter((track: any) => track.preview) // Solo con preview
+          .filter((track: any) => {
+            // Solo con preview
+            if (!track.preview) return false;
+            
+            // El artista del track debe coincidir (o al menos contener) al artista que buscamos
+            const trackArtistName = (track.artist?.name || '').toLowerCase();
+            const searchArtistName = artistName.toLowerCase();
+            
+            // Permitir coincidencias razonables (nombre exacto o contiene)
+            return trackArtistName === searchArtistName || 
+                   trackArtistName.includes(searchArtistName) ||
+                   searchArtistName.includes(trackArtistName.split(' ')[0]); // Primera palabra del nombre
+          })
           .map((track: any) => ({
             id: track.id.toString(),
             name: track.title,
