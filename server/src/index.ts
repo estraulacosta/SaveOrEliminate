@@ -77,10 +77,11 @@ io.on('connection', (socket) => {
     console.log('Config received:', JSON.stringify(config, null, 2));
 
     // Emitir evento de carga inicial
-    io.to(roomId).emit('game-loading', { loadedYears: 0, totalYears: config.selectionType === 'year' && config.yearRange
-      ? config.yearRange.end - config.yearRange.start + 1
-      : 0
-    });
+    let totalYears = 1; // Por defecto 1 para otros modos (genre, artist, etc)
+    if (config.selectionType === 'year' && config.yearRange) {
+      totalYears = config.yearRange.end - config.yearRange.start + 1;
+    }
+    io.to(roomId).emit('game-loading', { loadedYears: 0, totalYears });
 
     const success = await gameManager.startGame(roomId, config, (loadedYears, totalYears) => {
       // Emitir progreso de carga año a año

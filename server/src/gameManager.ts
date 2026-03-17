@@ -376,6 +376,10 @@ export async function startGame(
       room.totalRounds = config.totalRounds && config.totalRounds > 0 ? config.totalRounds : 20;
 
       console.log(`[Versus Mode] Songs loaded: ${room.versusSongsOption1.length} (${option1}), ${room.versusSongsOption2.length} (${option2}), totalRounds: ${room.totalRounds}`);
+      // Emitir progreso completado para modo versus
+      if (onProgress) {
+        onProgress(1, 1);
+      }
     } else {
       // ---- Otros modos: pool global ----
       console.log(`[StartGame] Other mode (${config.selectionType}): fetching songs...`);
@@ -385,6 +389,10 @@ export async function startGame(
       console.log(`[StartGame] Songs with preview: ${room.allSongs.length}/${allSongs.length}`);
       room.totalRounds = calculateTotalRounds(config, room.allSongs.length);
       console.log(`[StartGame] Final config - Mode: ${config.selectionType}, selectedRounds: ${config.totalRounds}, calculatedRounds: ${room.totalRounds}, songsPerRound: ${config.songsPerRound}`);
+      // Emitir progreso completado para otros modos
+      if (onProgress) {
+        onProgress(1, 1);
+      }
     }
     
     console.log(`[StartGame] SUCCESS - totalRounds is ${room.totalRounds}`);

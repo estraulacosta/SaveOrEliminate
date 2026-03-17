@@ -9,9 +9,21 @@ interface LoadingScreenProps {
 
 export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) {
   const [fakeProgress, setFakeProgress] = useState(0);
+  const [realProgressReceived, setRealProgressReceived] = useState(false);
 
   useEffect(() => {
-    if (progress) return; // Don't use fake progress if real progress is provided
+    // Si recibimos progreso real con total > 1, lo usamos
+    // Si total === 1, significa que no hay progreso detallado, usamos fake progress
+    if (progress && progress.total > 1) {
+      setRealProgressReceived(true);
+    } else {
+      setRealProgressReceived(false);
+    }
+  }, [progress]);
+
+  useEffect(() => {
+    // Usar fake progress si no tenemos progreso real detallado
+    if (realProgressReceived) return;
 
     const interval = setInterval(() => {
       setFakeProgress(prev => {
@@ -23,9 +35,9 @@ export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) 
     }, 200);
 
     return () => clearInterval(interval);
-  }, [progress]);
+  }, [realProgressReceived]);
 
-  const percentage = progress && progress.total > 0
+  const percentage = realProgressReceived && progress && progress.total > 1
     ? Math.min(Math.round((progress.loaded / progress.total) * 100), 100)
     : Math.min(Math.round(fakeProgress), 100);
 
@@ -66,7 +78,7 @@ export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) 
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.7 }}>
             <span>{percentage}%</span>
-            {progress && progress.total > 0 && (
+            {realProgressReceived && progress && progress.total > 1 && (
               <span>{progress.loaded} / {progress.total} canciones</span>
             )}
           </div>
