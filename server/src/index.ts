@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as gameManager from './gameManager.js';
 import type { GameConfig } from './types.js';
 import * as deezer from './deezer.js';
@@ -12,6 +13,13 @@ const httpServer = createServer(app);
 
 // Serve static files from client build (relative to current working directory)
 const clientBuildPath = path.join(process.cwd(), 'client', 'dist');
+
+// Log startup info
+console.log('=== Server Starting ===');
+console.log('CWD:', process.cwd());
+console.log('Client Build Path:', clientBuildPath);
+console.log('Client Build exists:', fs.existsSync(clientBuildPath));
+console.log('Index.html exists:', fs.existsSync(path.join(clientBuildPath, 'index.html')));
 
 // CORS configuration for Railway and development
 const corsOptions = {
@@ -54,8 +62,16 @@ app.get('/health', (req, res) => {
 // SPA fallback: serve index.html for non-API routes
 app.get('*', (req, res) => {
   const indexPath = path.join(clientBuildPath, 'index.html');
+  
+  // Check if index.html exists
+  if (!fs.existsSync(indexPath)) {
+    console.error('[SPA] index.html not found at:', indexPath);
+    return res.status(404).send('Client build not found. Please ensure client/dist/index.html exists.');
+  }
+  
   res.sendFile(indexPath, (err) => {
     if (err) {
+      console.error('[SPA] Error serving index.html:', err.message);
       res.status(500).send('Error loading page');
     }
   });
@@ -243,7 +259,25 @@ io.on('connection', (socket) => {
 });
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
+
+// Error handling for uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('=== UNCAUGHT EXCEPTION ===');
+  console.error(err);
+  process.exit(1);
+});
+
+// Error handling for unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('=== UNHANDLED REJECTION ===');
+  console.error('Promise:', promise);
+  console.error('Reason:', reason);
+});
+
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
-  console.log(`Accessible locally at http://192.168.1.50:${PORT}`);
+  console.log('=== Server Started Successfully ===');
+  console.log(`Port: ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`URL: http://0.0.0.0:${PORT}`);
+  console.log(`Client Build: ${clientBuildPath}`);
 });
