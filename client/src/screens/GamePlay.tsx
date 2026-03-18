@@ -24,8 +24,10 @@ function createSimpleAudio(audioElement: HTMLAudioElement) {
       // Obtener el volumen del localStorage o usar 50% por defecto
       const savedVolume = localStorage.getItem('musicVolume');
       const volumePercent = savedVolume ? parseInt(savedVolume) : 50;
+      
       audioElement.volume = volumePercent / 100;
       audioElement.currentTime = 0;
+      audioElement.muted = false;
       
       // Flag para asegurar que onComplete se llamara solo UNA VEZ
       let hasCompleted = false;
@@ -37,16 +39,14 @@ function createSimpleAudio(audioElement: HTMLAudioElement) {
             console.log(`[Audio] Playing started successfully`);
           })
           .catch(err => {
-            console.error(`[Audio] Error playing:`, err);
-            if (onComplete && !hasCompleted) {
-              hasCompleted = true;
-              console.log(`[Audio] Calling onComplete due to error`);
-              onComplete();
-            }
+            // NO llamar a onComplete si hay error - dejar que el timeout lo maneje
+            // Así el audio tiene 10 segundos completos para intentar reproducir
+            console.warn(`[Audio] Playback error (will retry or use timeout):`, err.message);
           });
       }
 
-      // Detener después de 10 segundos
+      // Detener después de 10 segundos - SIEMPRE
+      // Esto asegura que el preview avance aunque el audio falle
       const timeoutId = setTimeout(() => {
         audioElement.pause();
         audioElement.currentTime = 0;
