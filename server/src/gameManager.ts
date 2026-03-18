@@ -136,7 +136,6 @@ export function findAndRemovePlayerFromAllRooms(playerId: string): { roomId: str
 // ============================================================
 function filterOutRemixes(songs: Song[]): Song[] {
   const keywords = [
-    'mix',
     'remix',
     'instrumental',
     'live',
@@ -150,7 +149,11 @@ function filterOutRemixes(songs: Song[]): Song[] {
     'mashup',
     'cover',
     'edit',
-    'remix version'
+    'remix version',
+    'en vivo',
+    'karaoke',
+    'demo',
+    'track by track'
   ];
 
   return songs.filter(song => {
@@ -182,7 +185,11 @@ function filterOutRemixesAllowInstrumental(songs: Song[]): Song[] {
     'mashup',
     'cover',
     'edit',
-    'remix version'
+    'remix version',
+    'en vivo',
+    'karaoke',
+    'demo',
+    'track by track'
   ];
 
   return songs.filter(song => {
@@ -192,6 +199,46 @@ function filterOutRemixesAllowInstrumental(songs: Song[]): Song[] {
     }
     const lowerName = song.name.toLowerCase();
     return !keywords.some(keyword => lowerName.includes(keyword));
+  });
+}
+
+// ============================================================
+// Filtro por artista principal: solo canciones donde el artista es el especificado
+// (sin features, colaboraciones, etc)
+// ============================================================
+function filterByPrimaryArtist(songs: Song[], targetArtistName: string): Song[] {
+  const normalizeArtistName = (name: string): string => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s]/g, '') // Remover caracteres especiales
+      .replace(/\s+/g, ' '); // Normalizar espacios
+  };
+
+  const targetNormalized = normalizeArtistName(targetArtistName);
+
+  return songs.filter(song => {
+    // Verificar si el artista aparece en el campo de artista (como substring)
+    // Incluye: artista principal, features (ft., feat., &, x, etc)
+    const songArtistNormalized = normalizeArtistName(song.artist);
+    const isMatch = songArtistNormalized.includes(targetNormalized);
+    
+    if (!isMatch) {
+      console.log(`[filterByArtist] Filtered out: "${song.name}" by ${song.artist}`);
+    }
+
+    // Exclusión especial: Taylor Swift - excluir "reputation Stadium Tour Surprise Song Playlist"
+    if (isMatch && normalizeArtistName(targetArtistName) === normalizeArtistName('taylor swift')) {
+      const albumNormalized = normalizeArtistName(song.albumName || '');
+      const excludeAlbumNormalized = normalizeArtistName('reputation Stadium Tour Surprise Song Playlist');
+      
+      if (albumNormalized === excludeAlbumNormalized) {
+        console.log(`[filterByArtist] Excluded Taylor Swift track: "${song.name}" from excluded album: ${song.albumName}`);
+        return false;
+      }
+    }
+
+    return isMatch;
   });
 }
 
@@ -218,18 +265,23 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
       case 'artist':
         if (config.artist) {
           console.log(`[fetchSongsForConfig] Fetching by artist: ${config.artist}`);
-          const songs = await deezer.searchByArtist(config.artist, 100);
+          const songs = await deezer.searchByArtist(config.artist, 300);
           console.log(`[fetchSongsForConfig] Got ${songs.length} songs from artist search`);
           const filtered = filterOutRemixes(songs);
           console.log(`[fetchSongsForConfig] After filtering remixes: ${filtered.length} songs`);
+          
+          // Filtro adicional: solo canciones del artista principal (sin features)
+          const filteredByPrimaryArtist = filterByPrimaryArtist(filtered, config.artist);
+          console.log(`[fetchSongsForConfig] After filtering by primary artist: ${filteredByPrimaryArtist.length} songs`);
+          
           // Show first 3 and last 3
-          if (filtered.length > 0) {
-            console.log(`[fetchSongsForConfig] First 3: ${filtered.slice(0, 3).map(s => `"${s.name}" (preview: ${s.previewUrl ? 'YES' : 'NO'})`).join(', ')}`);
-            if (filtered.length > 3) {
-              console.log(`[fetchSongsForConfig] Last 3: ${filtered.slice(-3).map(s => `"${s.name}" (preview: ${s.previewUrl ? 'YES' : 'NO'})`).join(', ')}`);
+          if (filteredByPrimaryArtist.length > 0) {
+            console.log(`[fetchSongsForConfig] First 3: ${filteredByPrimaryArtist.slice(0, 3).map(s => `"${s.name}" (${s.artist}) (preview: ${s.previewUrl ? 'YES' : 'NO'})`).join(', ')}`);
+            if (filteredByPrimaryArtist.length > 3) {
+              console.log(`[fetchSongsForConfig] Last 3: ${filteredByPrimaryArtist.slice(-3).map(s => `"${s.name}" (${s.artist}) (preview: ${s.previewUrl ? 'YES' : 'NO'})`).join(', ')}`);
             }
           }
-          return filtered;
+          return filteredByPrimaryArtist;
         }
         break;
         
@@ -264,8 +316,10 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
 async function fetchSongsForVersus(type: string, value: string): Promise<Song[]> {
   switch (type) {
     case 'artist':
-      const artistSongs = await deezer.searchByArtist(value, 50);
-      return filterOutRemixes(artistSongs);
+      const artistSongs = await deezer.searchByArtist(value, 150);
+      const filteredRemixes = filterOutRemixes(artistSongs);
+      // Filtro adicional: solo artista principal
+      return filterByPrimaryArtist(filteredRemixes, value);
     case 'year':
       return await deezer.searchByYear(parseInt(value), 25);
     case 'genre':
@@ -427,6 +481,23 @@ export async function startGame(
         console.log(`[Year Mode] First playable year: ${firstPlayableYear}`);
       }
 
+      // Validar que cada año tenga suficientes canciones
+      const songsPerRoundYear = config.songsPerRound || 6;
+      const playableYears = allYears.filter(year => {
+        const yearSongs = room.yearSongPool?.get(year) || [];
+        return yearSongs.length >= songsPerRoundYear;
+      });
+      
+      if (playableYears.length < totalYears) {
+        console.log(`[Year Mode] ⚠️ WARNING: Some years have insufficient songs!`);
+        console.log(`   - Total years: ${totalYears}`);
+        console.log(`   - Playable years: ${playableYears.length}`);
+        console.log(`   - Songs per round: ${songsPerRoundYear}`);
+        if (playableYears.length === 0) {
+          console.warn(`[Year Mode] ERROR: No playable years found! Game cannot start.`);
+        }
+      }
+
       // 2) Prefetch gradual en background (1 por vez, con pausa)
       const firstYearToPrefetch = start + (room.currentYearIndex ?? 0) + 1;
       void (async () => {
@@ -493,6 +564,26 @@ export async function startGame(
       }
       
       room.totalRounds = calculateTotalRounds(config, room.allSongs.length);
+      
+      // ============================================================
+      // LIMITACIÓN DE RONDAS: solo para modo ARTISTA normal (no para género ni década)
+      // ============================================================
+      if (config.selectionType === 'artist') {
+        const songsPerRound = config.songsPerRound || 6;
+        const requiredSongs = room.totalRounds * songsPerRound;
+        
+        if (room.allSongs.length < requiredSongs) {
+          const maxAvailableRounds = Math.floor(room.allSongs.length / songsPerRound);
+          console.log(`[StartGame] ⚠️ LIMITED ROUNDS: Artist has insufficient songs!`);
+          console.log(`   - Available songs: ${room.allSongs.length}`);
+          console.log(`   - Songs per round: ${songsPerRound}`);
+          console.log(`   - Requested rounds: ${room.totalRounds}`);
+          console.log(`   - Required songs: ${requiredSongs}`);
+          console.log(`   - Max available rounds: ${maxAvailableRounds}`);
+          room.totalRounds = Math.max(1, maxAvailableRounds); // Al menos 1 ronda
+        }
+      }
+      
       console.log(`[StartGame] Final config - Mode: ${config.selectionType}, selectedRounds: ${config.totalRounds}, calculatedRounds: ${room.totalRounds}, songsPerRound: ${config.songsPerRound}`);
       // Emitir progreso completado para otros modos
       if (onProgress) {

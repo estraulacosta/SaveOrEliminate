@@ -13,10 +13,6 @@ interface VoteResultsProps {
 }
 
 export default function VoteResults({ round, votes, players, isHost, totalRounds, onNextRound, onEndGame }: VoteResultsProps) {
-  const getPlayerName = (playerId: string) => {
-    return players.find(p => p.id === playerId)?.name || 'Desconocido';
-  };
-
   const getPlayerData = (playerId: string) => {
     const player = players.find(p => p.id === playerId);
     return {

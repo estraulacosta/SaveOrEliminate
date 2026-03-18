@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Music, Play, Users } from 'lucide-react';
+import { Play, Users } from 'lucide-react';
 
 interface HomeProps {
   onAction: (action: 'create' | 'join', roomId?: string) => void;
@@ -11,10 +11,9 @@ export default function Home({ onAction }: HomeProps) {
   return (
     <div className="screen-container">
       <div className="icon-hero">
-        <Music size={80} strokeWidth={1.5} />
+        <img src="/Logo/Logo.svg" alt="Save or Eliminate" style={{ width: 'clamp(200px, 70vw, 600px)', height: 'auto' }} />
       </div>
       
-      <h1>Save or Eliminate</h1>
       
       <p>Bienvenido al juego musical definitivo.</p>
 

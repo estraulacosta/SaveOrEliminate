@@ -6,6 +6,7 @@ export interface Song {
   albumArt: string;
   spotifyUrl: string;
   releaseYear?: number;
+  albumName?: string;
 }
 
 export interface Player {

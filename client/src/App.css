@@ -315,10 +315,10 @@ button.save:hover:not(:disabled) {
   }
 }
 
-/* Desktop - 3 columns (keep as is) */
+/* Desktop - 5 columns */
 @media (min-width: 1024px) {
   .grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: clamp(0.8rem, 2vw, 1.2rem);
     padding: 0 0.5rem;
   }

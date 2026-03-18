@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from '../components/Header';
-import { Loader, Music } from 'lucide-react';
+import { Loader } from 'lucide-react';
 
 interface LoadingScreenProps {
   onBack?: () => void;
@@ -48,12 +48,12 @@ export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) 
       <div className="card" style={{ alignItems: 'center', textAlign: 'center', padding: '3rem 2rem' }}>
         <div style={{ position: 'relative', marginBottom: '2rem' }}>
           <Loader 
-            size={64} 
+            size={125} 
             color="var(--color-principal)" 
             style={{ animation: 'spin 1.5s linear infinite' }} 
           />
           <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-            <Music size={24} color="rgba(255,255,255,0.5)" />
+            <img src="/Logo/Logo-2.svg" alt="Logo" style={{ width: '45px', height: '45px' }} />
           </div>
         </div>
 

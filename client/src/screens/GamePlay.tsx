@@ -68,7 +68,7 @@ function createSimpleAudio(audioElement: HTMLAudioElement) {
   };
 }
 
-export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode, selectionType, onTimerEnd, onBack }: GamePlayProps) {
+export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode, selectionType, currentYear, currentDecade, onTimerEnd, onBack }: GamePlayProps) {
   const [selectedSong, setSelectedSong] = useState<string | null>(null);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(round.roundNumber === 1 ? -1 : 0);
   const [previewsPlayed, setPreviewsPlayed] = useState(false);
@@ -285,7 +285,12 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
       <audio ref={audioRef} style={{ display: 'none' }} />
 
       <h1 style={{ marginTop: 'clamp(-0.5rem, -2vw, 0rem)', marginBottom: 'clamp(1rem, 2vw, 1.5rem)', fontSize: 'clamp(1.5rem, 6.25vw, 2.5rem)' }}>
-        RONDA {round.roundNumber}/{totalRounds}
+        {selectionType === 'year' 
+          ? `AÑO ${currentYear}`
+          : selectionType === 'decade'
+          ? `DÉCADA ${currentDecade}-${(currentDecade || 0) + 9}`
+          : `RONDA ${round.roundNumber}/${totalRounds}`
+        }
       </h1>
       <h2 style={{ 
         fontSize: 'clamp(1rem, 3.5vw, 1.5rem)', 
@@ -411,11 +416,10 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
               width: '100%',
               margin: '0 auto'
             }}>
-              {round.songs.map((song, index) => {
+              {round.songs.map((song) => {
               const voteCount = voteCounts[song.id] || 0;
               const isSelected = selectedSong === song.id;
               const isEliminate = gameMode === 'eliminate';
-              const totalSongs = round.songs.length;
               
               return (
                 <div
@@ -451,17 +455,17 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                   {votingStarted && voteCount > 0 && (
                     <div style={{
                       position: 'absolute',
-                      top: selectionType === 'versus' ? 'clamp(12px, 3vw, 18px)' : 'clamp(8px, 2vw, 12px)',
-                      right: selectionType === 'versus' ? 'clamp(12px, 3vw, 18px)' : 'clamp(8px, 2vw, 12px)',
+                      top: selectionType === 'versus' ? 'clamp(8px, 2vw, 18px)' : 'clamp(8px, 2vw, 12px)',
+                      right: selectionType === 'versus' ? 'clamp(8px, 2vw, 18px)' : 'clamp(8px, 2vw, 12px)',
                       backgroundColor: gameMode === 'eliminate' ? 'var(--color-eliminate)' : 'var(--color-save)',
                       color: 'white',
                       borderRadius: '50%',
-                      width: selectionType === 'versus' ? 'clamp(50px, 12vw, 65px)' : 'clamp(35px, 8vw, 45px)',
-                      height: selectionType === 'versus' ? 'clamp(50px, 12vw, 65px)' : 'clamp(35px, 8vw, 45px)',
+                      width: selectionType === 'versus' ? 'clamp(40px, 9.5vw, 65px)' : 'clamp(35px, 8vw, 45px)',
+                      height: selectionType === 'versus' ? 'clamp(40px, 9.5vw, 65px)' : 'clamp(35px, 8vw, 45px)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: selectionType === 'versus' ? 'clamp(1.2rem, 4vw, 1.6rem)' : 'clamp(1rem, 3vw, 1.2rem)',
+                      fontSize: selectionType === 'versus' ? 'clamp(1rem, 3vw, 1.6rem)' : 'clamp(1rem, 3vw, 1.2rem)',
                       fontWeight: 'bold',
                       zIndex: 10,
                       boxShadow: gameMode === 'eliminate' 
@@ -484,8 +488,8 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                         transition: 'all 0.3s ease',
                         display: 'block',
                         borderRadius: selectionType === 'versus' ? 'clamp(16px, 3vw, 24px)' : 'clamp(12px, 2vw, 16px)',
-                        width: selectionType === 'versus' ? 'clamp(220px, 35vw, 380px)' : 'clamp(150px, 25vw, 220px)',
-                        height: selectionType === 'versus' ? 'clamp(220px, 35vw, 380px)' : 'clamp(150px, 25vw, 220px)',
+                        width: selectionType === 'versus' ? 'clamp(160px, 30vw, 380px)' : 'clamp(150px, 25vw, 220px)',
+                        height: selectionType === 'versus' ? 'clamp(160px, 30vw, 380px)' : 'clamp(150px, 25vw, 220px)',
                       }}
                     />
                     
@@ -526,8 +530,8 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                             color: playingPreviewId === song.id ? 'var(--color-eliminate)' : 'var(--color-principal)',
                             border: `2px solid ${playingPreviewId === song.id ? 'var(--color-eliminate)' : 'var(--color-principal)'}`,
                             borderRadius: '50%',
-                            width: 'clamp(50px, 12vw, 70px)',
-                            height: 'clamp(50px, 12vw, 70px)',
+                            width: 'clamp(80px, 20vw, 120px)',
+                            height: 'clamp(80px, 20vw, 120px)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -546,21 +550,29 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                             btn.style.transform = 'scale(1)';
                           }}
                         >
-                          {playingPreviewId === song.id ? '⏸' : '▶'}
+                          <img 
+                            src={playingPreviewId === song.id ? '/iconos/pause.svg' : '/iconos/play.svg'} 
+                            alt={playingPreviewId === song.id ? 'Pause' : 'Play'}
+                            style={{
+                              width: 'clamp(80px, 20vw, 120px)',
+                              height: 'clamp(80px, 20vw, 120px)',
+                              objectFit: 'contain'
+                            }}
+                          />
                         </button>
                       </div>
                     )}
                   </div>
                   <h3 style={{ 
-                    fontSize: selectionType === 'versus' ? 'clamp(1.1rem, 4vw, 1.5rem)' : 'clamp(0.85rem, 3vw, 1.1rem)', 
+                    fontSize: selectionType === 'versus' ? 'clamp(0.85rem, 3.2vw, 1.5rem)' : 'clamp(0.85rem, 3vw, 1.1rem)', 
                     textAlign: 'center', 
-                    marginTop: selectionType === 'versus' ? 'clamp(1rem, 2vw, 1.5rem)' : 'clamp(0.5rem, 2vw, 0.8rem)', 
+                    marginTop: selectionType === 'versus' ? 'clamp(0.8rem, 1.8vw, 1.5rem)' : 'clamp(0.5rem, 2vw, 0.8rem)', 
                     marginBottom: '-0.55rem', 
                     lineHeight: '1', 
                     padding: '0' 
                   }}>{song.name}</h3>
                   <p style={{ 
-                    fontSize: selectionType === 'versus' ? 'clamp(0.95rem, 3.2vw, 1.2rem)' : 'clamp(0.75rem, 2.5vw, 0.95rem)', 
+                    fontSize: selectionType === 'versus' ? 'clamp(0.75rem, 2.6vw, 1.2rem)' : 'clamp(0.75rem, 2.5vw, 0.95rem)', 
                     margin: 0, 
                     opacity: 0.8, 
                     textAlign: 'center', 
