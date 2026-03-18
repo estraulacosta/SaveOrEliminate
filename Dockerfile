@@ -1,48 +1,49 @@
 # Build stage for client
 FROM node:18-alpine AS client-builder
 
-WORKDIR /app
+WORKDIR /build/client
 
+# Copy client files
 COPY client/package*.json ./
-
-RUN npm install
-
 COPY client/tsconfig.json ./
+COPY client/tsconfig.node.json ./
 COPY client/vite.config.ts ./
 COPY client/index.html ./
 COPY client/src ./src
 COPY client/public ./public
 
-RUN npm run build
+# Install and build
+RUN npm install && npm run build
 
 # Build stage for server
 FROM node:18-alpine AS server-builder
 
-WORKDIR /app
+WORKDIR /build/server
 
+# Copy server files
 COPY server/package*.json ./
 COPY server/tsconfig.json ./
-
-RUN npm install
-
 COPY server/src ./src
 
-RUN npm run build
+# Install and build
+RUN npm install && npm run build
 
 # Runtime stage
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy production dependencies
+# Copy package files for runtime
 COPY server/package*.json ./
+
+# Install only production dependencies
 RUN npm install --only=production
 
-# Copy compiled server
-COPY --from=server-builder /app/dist ./dist
+# Copy compiled server from builder
+COPY --from=server-builder /build/server/dist ./dist
 
-# Copy compiled client
-COPY --from=client-builder /app/dist ./client/dist
+# Copy compiled client from builder
+COPY --from=client-builder /build/client/dist ./client/dist
 
 EXPOSE 3001
 
