@@ -2,51 +2,67 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import * as gameManager from './gameManager.js';
 import type { GameConfig } from './types.js';
 import * as deezer from './deezer.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const httpServer = createServer(app);
 
-const io = new Server(httpServer, {
-  cors: {
-    origin: (origin, callback) => {
-      const allowedOrigins = [
-        'https://save-or-eliminate.vercel.app',
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://localhost:5174',
-        'http://192.168.1.50:5173',
-        'http://192.168.1.50:3001',
-      ];
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    methods: ['GET', 'POST'],
-    credentials: true,
+// CORS configuration for Railway and development
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    const allowedOrigins = [
+      'https://save-or-eliminate.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://192.168.1.50:5173',
+      'http://192.168.1.50:3001',
+    ];
+    
+    // In production (Railway), allow the same origin
+    if (process.env.NODE_ENV === 'production') {
+      callback(null, true);
+    } else if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
   },
+  methods: ['GET', 'POST'],
+  credentials: true,
+};
+
+const io = new Server(httpServer, {
+  cors: corsOptions,
   transports: ['websocket', 'polling'],
 });
 
-app.use(cors({
-  origin: [
-    'https://save-or-eliminate.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://192.168.1.50:5173',
-    'http://192.168.1.50:3001',
-  ],
-  credentials: true,
-}));
+app.use(cors(corsOptions));
 app.use(express.json());
+
+// Serve static files from client build
+const clientBuildPath = path.join(__dirname, '../../client/dist');
+app.use(express.static(clientBuildPath));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+// SPA fallback: serve index.html for non-API routes (before socket.io routes)
+app.get('*', (req, res) => {
+  const indexPath = path.join(clientBuildPath, 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      res.status(500).send('Error loading page');
+    }
+  });
 });
 
 io.on('connection', (socket) => {
