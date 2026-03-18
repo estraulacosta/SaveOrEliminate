@@ -5,7 +5,7 @@
     "buildCommand": "npm install && npm --prefix client install && npm --prefix client run build && npm --prefix server install && npm --prefix server run build"
   },
   "deploy": {
-    "startCommand": "node server/dist/index.js",
+    "startCommand": "npm --prefix server start",
     "healthcheckUrl": "http://localhost:3001/health",
     "restartPolicyMaxRetries": 5
   },

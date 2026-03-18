@@ -2,17 +2,16 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import * as path from 'path';
 import * as gameManager from './gameManager.js';
 import type { GameConfig } from './types.js';
 import * as deezer from './deezer.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
 const httpServer = createServer(app);
+
+// Serve static files from client build (relative to current working directory)
+const clientBuildPath = path.join(process.cwd(), 'client', 'dist');
 
 // CORS configuration for Railway and development
 const corsOptions = {
@@ -46,16 +45,13 @@ const io = new Server(httpServer, {
 
 app.use(cors(corsOptions));
 app.use(express.json());
-
-// Serve static files from client build
-const clientBuildPath = path.join(__dirname, '../../client/dist');
 app.use(express.static(clientBuildPath));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// SPA fallback: serve index.html for non-API routes (before socket.io routes)
+// SPA fallback: serve index.html for non-API routes
 app.get('*', (req, res) => {
   const indexPath = path.join(clientBuildPath, 'index.html');
   res.sendFile(indexPath, (err) => {
