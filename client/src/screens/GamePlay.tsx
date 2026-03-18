@@ -107,16 +107,16 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
     }
     
     setSelectedSong(null);
-    // Ronda 1: mostrar explicación (-1). Ronda 2+: comenzar previews automáticamente
+    // Ronda 1: mostrar explicación (-1). Ronda 2+: esperar evento del servidor igual que ronda 1
     if (round.roundNumber === 1) {
       setCurrentPreviewIndex(-1);
       setPreviewsPlayed(false);
       setPreviewsStarted(false);
     } else {
-      // Ronda 2+: comienzan las previews automáticamente
+      // Ronda 2+: preparar pero esperar evento del servidor
       setCurrentPreviewIndex(0);
       setPreviewsPlayed(false);
-      setPreviewsStarted(true);
+      setPreviewsStarted(false); // ← Esperar el evento, no autoplay
     }
     setShowingPreview(true);
     setVotingStarted(false);
@@ -224,6 +224,14 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
       socket.off('voting-started', handleVotingStarted);
     };
   }, [round.roundNumber]);
+
+  // Host: automáticamente emitir 'start-previews' en ronda 2+ (así todos están sincronizados)
+  useEffect(() => {
+    if (isHost && round.roundNumber > 1 && !previewsPlayed && !previewsStarted) {
+      console.log('[GamePlay] Host auto-starting previews for round', round.roundNumber);
+      socket.emit('start-previews', { roomId });
+    }
+  }, [isHost, round.roundNumber, previewsPlayed, previewsStarted, roomId]);
 
   const handleSongSelect = (songId: string) => {
     setSelectedSong(songId);
