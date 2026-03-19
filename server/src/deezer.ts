@@ -784,7 +784,7 @@ async function getArtistTracksHybrid(artistId: number, limit: number = 75): Prom
           name: track.title,
           artist: track.artist.name,
           previewUrl: track.preview,
-          albumArt: track.album?.cover_big || track.album?.cover_medium || '',
+          albumArt: track.album?.cover_big || track.album?.cover_medium || track.album?.cover || '',
           spotifyUrl: track.link || '',
           albumName: track.album?.title,
         });
@@ -1017,7 +1017,7 @@ export async function searchByArtist(artistName: string, limit: number = 50): Pr
         name: track.title,
         artist: track.artist.name,
         previewUrl: track.preview || null,
-        albumArt: track.album?.cover_medium || track.album?.cover_big || '',
+        albumArt: track.album?.cover_big || track.album?.cover_medium || track.album?.cover || '',
         spotifyUrl: '',
         releaseYear: extractYearFromDate(track.release_date),
         albumName: track.album?.title
@@ -1130,7 +1130,7 @@ export async function searchByGenre(genre: string, limit: number = 2000): Promis
             name: track.title,
             artist: track.artist.name,
             previewUrl: track.preview,
-            albumArt: track.album?.cover_medium || track.album?.cover_big || '',
+            albumArt: track.album?.cover_big || track.album?.cover_medium || track.album?.cover || '',
             spotifyUrl: '',
             releaseYear: extractYearFromDate(track.release_date),
             albumName: track.album?.title
@@ -1263,7 +1263,7 @@ export async function searchGenreForVersus(genre: string, songCount: number = 20
           name: randomTrackData.title,
           artist: randomTrackData.artist.name,
           previewUrl: randomTrackData.preview,
-          albumArt: randomTrackData.album?.cover_medium || randomTrackData.album?.cover_big || '',
+          albumArt: randomTrackData.album?.cover_big || randomTrackData.album?.cover_medium || randomTrackData.album?.cover || '',
           spotifyUrl: '',
           releaseYear: extractYearFromDate(randomTrackData.release_date),
           albumName: randomTrackData.album?.title
@@ -1326,11 +1326,7 @@ export async function searchByYear(year: number, limit: number = 100): Promise<S
           name: track.title,
           artist: track.artist.name,
           previewUrl: track.preview,
-          albumArt:
-            track.album?.cover_big ||
-            track.album?.cover_medium ||
-            track.album?.cover ||
-            '',
+          albumArt: track.album?.cover_big || track.album?.cover_medium || track.album?.cover || '',
           spotifyUrl: track.link,
         }));
 
@@ -1422,7 +1418,7 @@ export async function getTopTracks(limit: number = 20): Promise<Song[]> {
         name: track.title,
         artist: track.artist.name,
         previewUrl: track.preview,
-        albumArt: track.album.cover_big || track.album.cover_medium || track.album.cover,
+        albumArt: track.album?.cover_big || track.album?.cover_medium || track.album?.cover || '',
         spotifyUrl: track.link,
       }));
 

@@ -88,6 +88,54 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Song Preview Album Art Animation - Smooth scale and fade in */
+@keyframes songPreviewAlbumArt {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Song Preview Text Animation - Slides up with fade in */
+@keyframes songPreviewText {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Song Card Album Art Animation - Smooth entrance */
+@keyframes songCardAlbumArt {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Song Card Text Animation - Slides up with fade in */
+@keyframes songCardText {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 h1, h2, h3 {
   font-family: var(--font-title);
   text-transform: uppercase;
