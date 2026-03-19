@@ -343,7 +343,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
       )}
 
       {showingPreview && currentPreviewIndex >= 0 && currentPreviewIndex < round.songs.length && (
-        <div style={{ textAlign: 'center', padding: 'clamp(0.3rem, 1vw, 0.5rem)' }}>
+        <div key={`preview-${currentPreviewIndex}`} style={{ textAlign: 'center', padding: 'clamp(0.3rem, 1vw, 0.5rem)' }}>
           <div className="loading" style={{ marginBottom: 'clamp(0.6rem, 1vw, 0.8rem)', fontSize: 'clamp(1rem, 4vw, 1.2rem)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(0.3rem, 1vw, 0.5rem)' }}>
             <Music size={24} /> Reproduciendo...
           </div>
@@ -357,11 +357,12 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
             borderRadius: 'clamp(12px, 2vw, 16px)',
             objectFit: 'cover',
             margin: '0 auto clamp(0.3rem, 1vw, 0.5rem)',
-            boxShadow: '0 20px 60px rgba(128, 22, 199, 0.4)'
+            boxShadow: '0 20px 60px rgba(128, 22, 199, 0.4)',
+            animation: 'songPreviewAlbumArt 0.6s ease-out'
             }}
           />
-          <h3 style={{ fontSize: 'clamp(1.222rem, 4.3125vw, 1.725rem)', textAlign: 'center', marginBottom: '0.1rem' }}>{round.songs[currentPreviewIndex].name}</h3>
-          <p style={{ fontSize: 'clamp(1.078rem, 3.594vw, 1.294rem)', opacity: 0.8, textAlign: 'center' }}>{round.songs[currentPreviewIndex].artist}</p>
+          <h3 style={{ fontSize: 'clamp(1.222rem, 4.3125vw, 1.725rem)', textAlign: 'center', marginBottom: '0.1rem', animation: 'songPreviewText 0.6s ease-out 0.15s both' }}>{round.songs[currentPreviewIndex].name}</h3>
+          <p style={{ fontSize: 'clamp(1.078rem, 3.594vw, 1.294rem)', opacity: 0.8, textAlign: 'center', animation: 'songPreviewText 0.6s ease-out 0.25s both' }}>{round.songs[currentPreviewIndex].artist}</p>
         </div>
       )}
 
@@ -424,10 +425,11 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
               width: '100%',
               margin: '0 auto'
             }}>
-              {round.songs.map((song) => {
+              {round.songs.map((song, index) => {
               const voteCount = voteCounts[song.id] || 0;
               const isSelected = selectedSong === song.id;
               const isEliminate = gameMode === 'eliminate';
+              const cardDelay = index * 0.08;
               
               return (
                 <div
@@ -498,6 +500,7 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                         borderRadius: selectionType === 'versus' ? 'clamp(16px, 3vw, 24px)' : 'clamp(12px, 2vw, 16px)',
                         width: selectionType === 'versus' ? 'clamp(160px, 30vw, 380px)' : 'clamp(150px, 25vw, 220px)',
                         height: selectionType === 'versus' ? 'clamp(160px, 30vw, 380px)' : 'clamp(150px, 25vw, 220px)',
+                        animation: `songCardAlbumArt 0.6s ease-out ${cardDelay}s both`
                       }}
                     />
                     
@@ -577,7 +580,8 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                     marginTop: selectionType === 'versus' ? 'clamp(0.8rem, 1.8vw, 1.5rem)' : 'clamp(0.5rem, 2vw, 0.8rem)', 
                     marginBottom: '-0.55rem', 
                     lineHeight: '1', 
-                    padding: '0' 
+                    padding: '0',
+                    animation: `songCardText 0.6s ease-out ${cardDelay + 0.1}s both`
                   }}>{song.name}</h3>
                   <p style={{ 
                     fontSize: selectionType === 'versus' ? 'clamp(0.75rem, 2.6vw, 1.2rem)' : 'clamp(0.75rem, 2.5vw, 0.95rem)', 
@@ -585,7 +589,8 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
                     opacity: 0.8, 
                     textAlign: 'center', 
                     lineHeight: '1', 
-                    padding: '0' 
+                    padding: '0',
+                    animation: `songCardText 0.6s ease-out ${cardDelay + 0.15}s both`
                   }}>{song.artist}</p>
                 </div>
               );
