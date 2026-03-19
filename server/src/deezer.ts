@@ -3,6 +3,47 @@ import type { Song } from './types.js';
 
 const DEEZER_API = 'https://api.deezer.com';
 const ITUNES_API = 'https://itunes.apple.com/search';
+const MAX_ARTISTS_PER_GENRE = 60; // Máximo artistas por género (usa menos si no hay 60)
+
+/**
+ * Calcula un score de similitud entre dos nombres de artista (0-1)
+ */
+function calculateMatchScore(requested: string, returned: string): number {
+  const norm1 = normalizeName(requested);
+  const norm2 = normalizeName(returned);
+  
+  if (norm1 === norm2) return 1.0;
+  
+  // Substring matching - MÁS RESTRICTIVO
+  if (norm1.includes(norm2) || norm2.includes(norm1)) {
+    const shorter = norm1.length < norm2.length ? norm1 : norm2;
+    const longer = norm1.length < norm2.length ? norm2 : norm1;
+    
+    // Si uno es substring pero el largo es significativamente más grande (>30%),
+    // probablemente sea otro artista (ej: "prince" vs "princeroyce")
+    if (longer.length > shorter.length * 1.3) {
+      // Penalizar substring parcial
+      return 0.65;
+    }
+    
+    return 0.95;
+  }
+  
+  const parts1 = norm1.split(/\s+/).filter(p => p.length > 2);
+  const parts2 = norm2.split(/\s+/).filter(p => p.length > 2);
+  
+  if (parts1.length === 0 || parts2.length === 0) return 0;
+  
+  const commonParts = parts1.filter(p => parts2.includes(p));
+  const overlapRatio = commonParts.length / Math.max(parts1.length, parts2.length);
+  
+  if (overlapRatio >= 0.5) return 0.8 + (overlapRatio * 0.15);
+  return Math.max(0, overlapRatio * 0.6);
+}
+
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+}
 const trackYearCache = new Map<string, number | null>();
 
 const TITLE_BLOCKLIST = [
@@ -12,10 +53,10 @@ const TITLE_BLOCKLIST = [
 ];
 
 
-function extractYearFromDate(value?: string): number | null {
-  if (!value || value.length < 4) return null;
+function extractYearFromDate(value?: string): number | undefined {
+  if (!value || value.length < 4) return undefined;
   const parsed = parseInt(value.substring(0, 4));
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function shouldRejectTitle(title: string, year?: number): boolean {
@@ -28,16 +69,16 @@ function shouldRejectTitle(title: string, year?: number): boolean {
   return false;
 }
 
-function getTrackAndAlbumYear(track: any): { trackYear: number | null; albumYear: number | null } {
+function getTrackAndAlbumYear(track: any): { trackYear: number | undefined; albumYear: number | undefined } {
   return {
     trackYear: extractYearFromDate(track?.release_date),
     albumYear: extractYearFromDate(track?.album?.release_date),
   };
 }
 
-function isStrictYearMatch(year: number, trackYear: number | null, albumYear: number | null): boolean {
+function isStrictYearMatch(year: number, trackYear: number | undefined, albumYear: number | undefined): boolean {
   // Preferimos año del track; solo usar álbum si trackYear no existe.
-  if (trackYear !== null) {
+  if (trackYear !== undefined) {
     return trackYear === year;
   }
   return albumYear === year;
@@ -160,6 +201,50 @@ async function searchItunesByYear(year: number, limit: number): Promise<Song[]> 
 }
 
 // Mapeo de géneros a artistas clave 100% confiables para búsqueda pura
+// ALIASING: Artistas que tienen variaciones de nombre en Deezer
+const ARTIST_NAME_ALIASES: { [key: string]: string[] } = {
+  'The Beatles': ['The Beatles', 'Beatles', 'The Fab Four'],
+  'The Rolling Stones': ['The Rolling Stones', 'Rolling Stones', 'The Stones'],
+  'Led Zeppelin': ['Led Zeppelin', 'Led Zepplin', 'Led-Zeppelin'],
+  'Pink Floyd': ['Pink Floyd', 'The Pink Floyd'],
+  'David Bowie': ['David Bowie', 'Bowie', 'David Robert Jones'],
+  'The Who': ['The Who', 'Who', 'The Who Sings'],
+  'AC/DC': ['AC/DC', 'ACDC', 'AC DC', 'acdc'],
+  'Metallica': ['Metallica', 'METALLICA'],
+  'Aerosmith': ['Aerosmith', 'AEROSMITH'],
+  'Guns N\' Roses': ['Guns N\' Roses', 'Guns N Roses', 'Guns and Roses', 'Guns Roses'],
+  'Queen': ['Queen', 'Queen Greatest Hits'],
+  'Jimi Hendrix': ['Jimi Hendrix', 'Jimi Hendrix Experience', 'Hendrix'],
+  'Deep Purple': ['Deep Purple', 'Deep Purpel'],
+  'The Doors': ['The Doors', 'Doors'],
+  'U2': ['U2', 'U 2'],
+  'Bruce Springsteen': ['Bruce Springsteen', 'Springsteen', 'Bruce Frederick Springsteen'],
+  'Fleetwood Mac': ['Fleetwood Mac', 'Fleetwood-Mac', 'Fleetwood'],
+  'The Police': ['The Police', 'Police'],
+  'Dire Straits': ['Dire Straits', 'Dire Strait'],
+  'Black Sabbath': ['Black Sabbath', 'Black Sabbath and More'],
+  'Iron Maiden': ['Iron Maiden', 'IRON MAIDEN'],
+  'Pearl Jam': ['Pearl Jam', 'Pearl-Jam'],
+  'Radiohead': ['Radiohead', 'Radiohead Thom Yorke'],
+  'Linkin Park': ['Linkin Park', 'Linkin-Park'],
+  'Bon Jovi': ['Bon Jovi', 'Bon-Jovi'],
+  'Van Halen': ['Van Halen', 'Van-Halen', 'Vanhalen'],
+  'Red Hot Chili Peppers': ['Red Hot Chili Peppers', 'Red Hot Chilli Peppers', 'RHCP'],
+  'Journey': ['Journey', 'Journey Band'],
+  'The Kinks': ['The Kinks', 'Kinks'],
+  'Genesis': ['Genesis', 'Genesis Plus'],
+  'Elton John': ['Elton John', 'Elton', 'Reginald Kenneth Dwight'],
+  'Nirvana': ['Nirvana', 'Nirvana Kurt Cobain'],
+  'George Michael': ['George Michael', 'George Michael Careless'],
+  'Muse': ['Muse', 'MUSE', 'Muse Simulation'],
+  'Foo Fighters': ['Foo Fighters', 'Foo-Fighters'],
+  'Green Day': ['Green Day', 'Green-Day'],
+  'Coldplay': ['Coldplay', 'Cold-Play'],
+  'Oasis': ['Oasis', 'Oasis (What\'s the Story)'],
+  'Blur': ['Blur', 'Blur Damon Albarn'],
+  'The Beach Boys': ['The Beach Boys', 'Beach Boys', 'Beach Boys The']
+};
+
 const GENRE_ARTISTS: { [key: string]: string[] } = {
   'reggae': [
         'Bob Marley', 'Peter Tosh', 'Burning Spear', 'Jimmy Cliff', 'Steel Pulse', 
@@ -174,10 +259,10 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
     'reggaeton': [
         'Daddy Yankee', 'Don Omar', 'Bad Bunny', 'J Balvin', 'Wisin y Yandel', 
         'Arcángel', 'Farruko', 'Anitta', 'Jhay Cortez', 'Ozuna',
-        'Tego Calderón', 'Ivy Queen', 'Zion & Lennox', 'Nicky Jam', 'Plan B', 
+        'Tego Calderon', 'Ivy Queen', 'Zion & Lennox', 'Nicky Jam', 'Plan B', 
         'Vico C', 'Alexis & Fido', 'Rauw Alejandro', 'Karol G', 'Maluma', 
         'Myke Towers', 'Feid', 'De La Ghetto', 'Chencho Corleone', 'Yandel', 
-        'Tito El Bambino', 'Ñengo Flow', 'Ryan Castro', 'Blessd', 'El Alfa',
+        'Tito El Bambino', 'Nengo Flow', 'Ryan Castro', 'Blessd', 'El Alfa',
         'Luny Tunes', 'Natti Natasha', 'Becky G', 'Sech', 'Mora', 
         'Manuel Turizo', 'Bryant Myers', 'Cosculluela', 'Baby Rasta & Gringo', 'Calle 13', 'Quevedo'
     ],
@@ -215,7 +300,7 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
     ],
     'pop': [
         'Michael Jackson', 'Madonna', 'Britney Spears', 'The Weeknd', 'Ariana Grande', 
-        'Taylor Swift', 'Lady Gaga', 'Beyoncé', 'Drake', 'Billie Eilish', 
+        'Taylor Swift', 'Lady Gaga', 'Beyonce', 'Drake', 'Billie Eilish', 
         'Olivia Rodrigo', 'Sabrina Carpenter', 'Chappell Roan', 'Gracie Abrams', 'Justin Bieber', 
         'Katy Perry', 'Adele', 'Rihanna', 'Bruno Mars', 'Ed Sheeran', 
         'Harry Styles', 'Dua Lipa', 'Prince', 'George Michael', 'Whitney Houston', 
@@ -257,8 +342,8 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Aretha Franklin', 'Ray Charles', 'Whitney Houston', 'Luther Vandross', 'Alicia Keys', 
         'SZA', 'Frank Ocean', 'The Weeknd', 'D\'Angelo', 'Maxwell', 'Toni Braxton', 
         'Ginuwine', 'Monica', 'Brandy', 'Chris Brown', 'Summer Walker', 'H.E.R.', 'Jali',
-        'Solange', 'Janelle Monáe', 'Miguel', 'Kehlani', 'Giveon', 
-        'Brent Faiyaz', 'Lucky Daye', 'Victoria Monét', 'Tems', 'Teyana Taylor'
+        'Solange', 'Janelle Monae', 'Miguel', 'Kehlani', 'Giveon', 
+        'Brent Faiyaz', 'Lucky Daye', 'Victoria Monet', 'Tems', 'Teyana Taylor'
     ],
     'electronic': [
         'Daft Punk', 'The Chemical Brothers', 'Aphex Twin', 'Fatboy Slim', 'Moby', 
@@ -275,7 +360,7 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Armin van Buuren', 'Swedish House Mafia', 'Marshmello', 'Martin Garrix', 'Zedd', 
         'Kygo', 'Robin Schulz', 'Major Lazer', 'Clean Bandit', 'The Chainsmokers', 
         'Cascada', 'Alice Deejay', 'Vengaboys', 'Bob Sinclar', 'Eric Prydz', 
-        'Paul van Dyk', 'Benny Benassi', 'Rüfüs Du Sol', 'Fred again..', 'Fisher',
+        'Paul van Dyk', 'Benny Benassi', 'Rufus Du Sol', 'Fred again..', 'Fisher',
         'Peggy Gou', 'Honey Dijon', 'Dom Dolla', 'Purple Disco Machine', 'CamelPhat', 
         'Duke Dumont', 'Gorgon City', 'Jax Jones', 'Oliver Heldens', 'Meduza'
     ],
@@ -323,10 +408,10 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Ludwig van Beethoven', 'Wolfgang Amadeus Mozart', 'Johan Sebastian Bach', 
         'Pyotr Ilyich Tchaikovsky', 'George Friedrich Handel', 'Antonio Vivaldi', 
         'Gioachino Rossini', 'Giuseppe Verdi', 'Richard Wagner', 'Claude Debussy',
-        'Johannes Brahms', 'Franz Schubert', 'Frédéric Chopin', 'Igor Stravinsky', 
+        'Johannes Brahms', 'Franz Schubert', 'Frederic Chopin', 'Igor Stravinsky', 
         'Gustav Mahler', 'Maurice Ravel', 'Sergei Rachmaninoff', 'Giacomo Puccini', 
-        'Dmitri Shostakovich', 'Felix Mendelssohn', 'Antonín Dvořák', 'Edward Elgar', 
-        'Erik Satie', 'Béla Bartók', 'Jean Sibelius', 'Modest Mussorgsky', 
+        'Dmitri Shostakovich', 'Felix Mendelssohn', 'Antonin Dvorak', 'Edward Elgar', 
+        'Erik Satie', 'Bela Bartok', 'Jean Sibelius', 'Modest Mussorgsky', 
         'Camille Saint-Saëns', 'Franz Liszt', 'Aaron Copland', 'Leonard Bernstein',
         'Philip Glass', 'Arvo Pärt', 'John Adams', 'Steve Reich', 'Max Richter', 
         'Ludovico Einaudi', 'Hans Zimmer', 'Gustav Holst', 'Claudio Monteverdi', 'Henry Purcell'
@@ -382,60 +467,60 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Dumpstaphunk', 'The Budos Band', 'Sharon Jones & The Dap-Kings', 'Galactic', 'Orgone'
     ],
     'salsa': [
-        'Celia Cruz', 'Willie Colón', 'Héctor Lavoe', 'Oscar D\'León', 'Rubén Blades', 
+        'Celia Cruz', 'Willie Colon', 'Hector Lavoe', 'Oscar D\'Leon', 'Ruben Blades', 
         'Ismael Miranda', 'Ray Barretto', 'Tito Puente', 'Eddie Santiago', 'Joe Arroyo',
         'El Gran Combo de Puerto Rico', 'La Sonora Ponceña', 'Richie Ray & Bobby Cruz', 
         'Cheo Feliciano', 'Gilberto Santa Rosa', 'Marc Anthony', 'Victor Manuelle', 
         'La India', 'Fania All-Stars', 'Roberto Roena', 'Luis Enrique', 'Frankie Ruiz', 
-        'Jerry Rivera', 'Grupo Niche', 'Orquesta Guayacán', 'Papo Lucca', 'Adalberto Santiago', 
-        'Andy Montañez', 'Tito Nieves', 'Maelo Ruiz',
-        'Ismael Rivera', 'Benny Moré', 'Sonora Matancera', 'Fruko y sus Tesos', 'Bobby Valentín', 
+        'Jerry Rivera', 'Grupo Niche', 'Orquesta Guayacan', 'Papo Lucca', 'Adalberto Santiago', 
+        'Andy Montanez', 'Tito Nieves', 'Maelo Ruiz',
+        'Ismael Rivera', 'Benny More', 'Sonora Matancera', 'Fruko y sus Tesos', 'Bobby Valentin', 
         'Tommy Olivencia', 'Tony Vega', 'Rey Ruiz', 'Hansel y Raul', 'Choco Orta'
     ],
     'vallenato': [
-        'Carlos Vives', 'Diomedes Díaz', 'Binomio de Oro de América', 'Jorge Celedón', 'Felipe Peláez', 
-        'Peter Manjarrés', 'Rafael Orozco', 'Silvestre Dangond', 'Los Diablitos', 'Los Chiches del Vallenato',
-        'Los Gigantes del Vallenato', 'Los Inquietos del Vallenato', 'Nelson Velásquez', 'Jean Carlos Centeno', 
-        'Alfredo Gutiérrez', 'Alejo Durán', 'Luis Enrique Martínez', 'Pacho Rada', 'Emiliano Zuleta', 
-        'Poncho Zuleta', 'Iván Villazón', 'Beto Zabaleta', 'Silvio Brito', 
-        'Miguel Morales', 'Patricia Teherán', 'Kaleth Morales', 'Hebert Vargas', 'Alex Manga', 'Daniel Calderón',
-        'Omar Geles', 'Elder Dayán Díaz', 'Mono Zabaleta', 'Kvrass', 'Luifer Cuello', 
-        'Adriana Lucía', 'Gusi', 'Lucas Dangond', 'Los Embajadores', 'Luis Mario Oñate', 'El Gran Martin Elias', 'Rafael Escalona'
+        'Carlos Vives', 'Diomedes Diaz', 'Binomio de Oro', 'Jorge Celedon', 'Felipe Pelaez', 
+        'Peter Manjarres', 'Rafael Orozco', 'Silvestre Dangond', 'Los Diablitos', 'Los Chiches del Vallenato',
+        'Los Gigantes del Vallenato', 'Los Inquietos del Vallenato', 'Nelson Velasquez', 'Jean Carlos Centeno', 
+        'Alfredo Gutierrez', 'Alejo Duran', 'Luis Enrique Martinez', 'Pacho Rada', 'Emiliano Zuleta', 
+        'Poncho Zuleta', 'Ivan Villazon', 'Beto Zabaleta', 'Silvio Brito', 
+        'Miguel Morales', 'Patricia Teheran', 'Kaleth Morales', 'Hebert Vargas', 'Alex Manga', 'Daniel Calderon',
+        'Omar Geles', 'Elder Dayan Diaz', 'Mono Zabaleta', 'Kvrass', 'Luifer Cuello', 
+        'Adriana Lucia', 'Gusi', 'Lucas Dangond', 'Los Embajadores', 'Luis Mario Onate', 'El Gran Martin Elias', 'Rafael Escalona'
     ],
     'bachata': [
         'Juan Luis Guerra', 'Aventura', 'Romeo Santos', 'Antony Santos', 'Xtreme', 
-        'Monchy & Alexandra', 'Grupo Manía', 'Hector Acosta', 'Los Ilegales', 'Prince Royce',
+        'Monchy & Alexandra', 'Grupo Mania', 'Hector Acosta', 'Los Ilegales', 'Prince Royce',
         'Raulin Rodriguez', 'Luis Vargas', 'Frank Reyes', 'Zacarias Ferreira', 'El Chaval de la Bachata', 
         'Joe Veras', 'Teodoro Reyes', 'Leonardo Paniagua', 'Blas Duran', 'Yoskar Sarante', 
-        'Kiko Rodriguez', 'Elvis Martinez', 'Daniel Santacruz', 'Vicente García', 'Leslie Grace', 
+        'Kiko Rodriguez', 'Elvis Martinez', 'Daniel Santacruz', 'Vicente Garcia', 'Leslie Grace', 
         'Toby Love', 'Luis Miguel del Amargue', 'Henry Santos', 'Alexandra', 'Joan Soriano',
-        'El Vinny', 'Karlos Rosé', 'Pinto Picasso', 'Luis Segura', 'Jose Manuel Calderon', 
+        'El Vinny', 'Karlos Rose', 'Pinto Picasso', 'Luis Segura', 'Jose Manuel Calderon', 
         'Eladio Romero Santos', 'Chicho Severino', 'Andy Andy', 'Cosby', 'Bachata Heightz'
     ],
     'cumbia': [
-        'Los Graduados', 'Sonora Dinamita', 'Guaco', 'Grupo Bahía', 'La Hipoteca', 
-        'Fulanito', 'Grupo Galé', 'El Binomio de Oro', 'Los Palmeras', 'Gilda', 
-        'Los Ángeles Azules', 'Margarita la Diosa de la Cumbia', 'Pastor López', 'Rodolfo Aicardi', 
-        'Los Hispanos', 'La Sonora de Margarita', 'Grupo Cañaveral', 'Rafaga', 'Amar Azul', 
-        'Damas Gratis', 'Los Mirlos', 'Juaneco y su Combo', 'Aniceto Molina', 'Lucho Bermúdez', 
+        'Los Graduados', 'Sonora Dinamita', 'Guaco', 'Grupo Bahia', 'La Hipoteca', 
+        'Fulanito', 'Grupo Gale', 'El Binomio de Oro', 'Los Palmeras', 'Gilda', 
+        'Los Angeles Azules', 'Margarita la Diosa de la Cumbia', 'Pastor Lopez', 'Rodolfo Aicardi', 
+        'Los Hispanos', 'La Sonora de Margarita', 'Grupo Canaveral', 'Rafaga', 'Amar Azul', 
+        'Damas Gratis', 'Los Mirlos', 'Juaneco y su Combo', 'Aniceto Molina', 'Lucho Bermudez', 
         'Pacho Galán', 'Totó la Momposina', 'Ondatrópica', 'Bomba Estéreo', 'Chicha Libre', 'Bareto',
         'Los Destellos', 'La Delio Valdez', 'Santaferia', 'Chico Trujillo', 'La Combo Tortuga', 
-        'Los Shapis', 'Grupo Karicia', 'Agua Marina', 'Armonia 10', 'Corazón Serrano'
+        'Los Shapis', 'Grupo Karicia', 'Agua Marina', 'Armonia 10', 'Corazon Serrano'
     ],
     'merengue': [
-        'Juan Luis Guerra', 'Oro Sólido', 'Sergio Vargas', 'Los Ilegales', 'Grupo Manía', 
-        'Eddy Herrera', 'Fulanito', 'Kinito Méndez', 'Wilfrido Vargas', 'Johnny Ventura', 
-        'Olga Tañón', 'Elvis Crespo', 'Milly Quezada', 'Fernando Villalona', 'Los Vecinos', 
+        'Juan Luis Guerra', 'Oro Solido', 'Sergio Vargas', 'Los Ilegales', 'Grupo Mania', 
+        'Eddy Herrera', 'Fulanito', 'Kinito Mendez', 'Wilfrido Vargas', 'Johnny Ventura', 
+        'Olga Tanon', 'Elvis Crespo', 'Milly Quezada', 'Fernando Villalona', 'Los Vecinos', 
         'The New York Band', 'Bandy2', 'La Makina', 'Rikarena', 'Jossie Esteban', 
         'Pochy y su Cocoband', 'Cuco Valoy', 'Bonny Cepeda', 'Alex Bueno', 'Miriam Cruz', 
-        'Manny Manuel', 'Gabriel Pagán', 'Omega', 'Chichi Peralta', 'Toño Rosario',
-        'Papi Sánchez', 'Magic Juan', 'Proyecto Uno', 'Sandy & Papo', 'Ilegales', 
+        'Manny Manuel', 'Gabriel Pagan', 'Omega', 'Chichi Peralta', 'Tono Rosario',
+        'Papi Sanchez', 'Magic Juan', 'Proyecto Uno', 'Sandy & Papo', 'Ilegales', 
         'Julian Oro Duro', 'Tito Kenton', 'El Prodigio', 'Krisspy', 'Banda Real'
     ],
     'tango': [
         'Carlos Gardel', 'Astor Piazzolla', 'Julio Sosa', 'Roberto Goyeneche', 'Carlos Di Sarli', 
-        'Juan d\'Arienzo', 'Osvaldo Pugliese', 'Leopoldo Federico', 'Adriana Varela', 'Aníbal Troilo', 
-        'Francisco Canaro', 'Edmundo Rivero', 'Libertad Lamarque', 'Tita Merello', 'Enrique Santos Discépolo', 
+        'Juan d\'Arienzo', 'Osvaldo Pugliese', 'Leopoldo Federico', 'Adriana Varela', 'Anibal Troilo', 
+        'Francisco Canaro', 'Edmundo Rivero', 'Libertad Lamarque', 'Tita Merello', 'Enrique Santos Discepolo', 
         'Homero Manzi', 'Mariano Mores', 'Nelly Omar', 'Alberto Castillo', 'Osvaldo Fresedo', 
         'Miguel Caló', 'Angel D\'Agostino', 'Lucio Demare', 'Rodolfo Biagi', 'Hugo del Carril', 
         'Susana Rinaldi', 'Rubén Juárez', 'Gino Matteo', 'Gotan Project', 'Bajofondo',
@@ -457,17 +542,17 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Reel Big Fish', 'Less Than Jake', 'The Clash', 'The Police', 'No Doubt', 
         'The Skatalites', 'Prince Buster', 'Desmond Dekker', 'The Toasters', 'The Slackers', 
         'Save Ferris', 'Goldfinger', 'Operation Ivy', 'The Mighty Mighty Bosstones', 'Fishbone', 
-        'The Interrupters', 'Streetlight Manifesto', 'Tokyo Ska Paradise Orchestra', 'Panteón Rococó', 
-        'Los Fabulosos Cadillacs', 'Los Auténticos Decadentes', 'La Maldita Vecindad', 'Inspector', 
+        'The Interrupters', 'Streetlight Manifesto', 'Tokyo Ska Paradise Orchestra', 'Panteon Rococo', 
+        'Los Fabulosos Cadillacs', 'Los Autenticos Decadentes', 'La Maldita Vecindad', 'Inspector', 
         'Skank', 'Hepcat',
-        'The Pietasters', 'Big D and the Kids Table', 'Ska-P', 'Desorden Público', 'Los Pericos', 
+        'The Pietasters', 'Big D and the Kids Table', 'Ska-P', 'Desorden Publico', 'Los Pericos', 
         'The Aggrolites', 'Busters', 'Mephiskapheles', 'Bad Brains', 'English Beat'
     ],
     'gospel': [
         'Mahalia Jackson', 'Elvis Presley', 'Yolanda Adams', 'Kirk Franklin', 'Shirley Caesar', 
         'Al Green', 'Sam Cooke', 'Aretha Franklin', 'Tye Tribbett', 'CeCe Winans', 
         'BeBe Winans', 'Fred Hammond', 'Marvin Sapp', 'Donnie McClurkin', 'Tamela Mann', 
-        'Andraé Crouch', 'The Clark Sisters', 'Hezekiah Walker', 'Israel Houghton', 'Smokie Norful', 
+        'Andrae Crouch', 'The Clark Sisters', 'Hezekiah Walker', 'Israel Houghton', 'Smokie Norful', 
         'Maverick City Music', 'Tasha Cobbs Leonard', 'Lecrae', 'The Blind Boys of Alabama', 
         'The Soul Stirrers', 'The Jordanaires', 'Thomas A. Dorsey', 'Sandi Patty', 'Amy Grant', 'Casting Crowns',
         'Kim Burrell', 'Donnie McClurkin', 'Byron Cage', 'John P. Kee', 'Deitrick Haddon', 
@@ -476,7 +561,7 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
     'bluegrass': [
         'Bill Monroe', 'Earl Scruggs', 'Lester Flatt', 'The Stanley Brothers', 'The Osborne Brothers', 
         'Ricky Skaggs', 'Tony Rice', 'Norman Blake', 'David Grisman', 'Doc Watson', 
-        'Alison Krauss', 'Béla Fleck', 'Del McCoury', 'John Hartford', 'Old & In The Way', 
+        'Alison Krauss', 'Bela Fleck', 'Del McCoury', 'John Hartford', 'Old & In The Way', 
         'The Dillards', 'Chris Thile', 'The Steeldrivers', 'Billy Strings', 'Molly Tuttle', 
         'Rhiannon Giddens', 'The Punch Brothers', 'Trampled by Turtles', 'Nickel Creek', 
         'Seldom Scene', 'J.D. Crowe', 'Sam Bush', 'Jerry Douglas', 'Vassar Clements', 'Clarence White',
@@ -496,16 +581,16 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
     'techno': [
         'Richie Hawtin', 'Adam Beyer', 'Amelie Lens', 'Charlotte de Witte', 'Carl Cox', 
         'Loco Dice', 'Jeff Mills', 'Robert Hood', 'Surgeon', 'Dave Clarke', 
-        'Juan Atkins', 'Kevin Saunderson', 'Derrick May', 'Sven Väth', 'Laurent Garnier', 
+        'Juan Atkins', 'Kevin Saunderson', 'Derrick May', 'Sven Vath', 'Laurent Garnier', 
         'Nina Kraviz', 'Ben Klock', 'Marcel Dettmann', 'Chris Liebing', 'Speedy J', 
         'Dubfire', 'Paul Kalkbrenner', 'Ellen Allien', 'Boris Brejcha', 'Enrico Sangiuliano', 
         'Nicole Moudaber', 'Joseph Capriati', 'Slam', 'Underground Resistance', 'The Belleville Three',
         'Oscar Mulero', '999999999', 'I Hate Models', 'Fjaak', 'Tale of Us', 
-        'Maceo Plex', 'Dixon', 'Âme', 'Kobosil', 'Blawan'
+        'Maceo Plex', 'Dixon', 'Ame', 'Kobosil', 'Blawan'
     ],
     'soundtrack': [
-        'Ludwig Göransson', 'Daniel Blumberg', 'Volker Bertelmann', 'Hans Zimmer', 'Jon Batiste',
-        'Atticus Ross', 'Trent Reznor', 'Hildur Guðnadóttir', 'Alexandre Desplat', 'Justin Hurwitz',
+        'Ludwig Goransson', 'Daniel Blumberg', 'Volker Bertelmann', 'Hans Zimmer', 'Jon Batiste',
+        'Atticus Ross', 'Trent Reznor', 'Hildur Gudnadottir', 'Alexandre Desplat', 'Justin Hurwitz',
         'Ennio Morricone', 'Steven Price', 'Mychael Danna', 'Ludovic Bource', 'Michael Giacchino',
         'A.R. Rahman', 'Dario Marianelli', 'Gustavo Santaolalla', 'Jan A.P. Kaczmarek', 'Howard Shore',
         'Elliot Goldenthal', 'Tan Dun', 'John Corigliano', 'Nicola Piovani', 'James Horner',
@@ -524,21 +609,21 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Masayoshi Soken', 'Christopher Tin', 'Grant Kirkhope', 'Akira Yamaoka', 'Inon Zur'
     ],
     'popular': [
-        'Darío Gómez', 'Luis Alberto Posada', 'El Charrito Negro', 'Arelys Henao', 'Jhonny Rivera',
-        'Yeison Jiménez', 'Jessi Uribe', 'Luis Alfonso', 'Paola Jara', 'Alzate',
-        'Francy', 'Pipe Bueno', 'Jhon Álex Castaño', 'Giovanny Ayala', 'Luisito Muñoz',
-        'Fernando Burbano', 'El Andariego', 'Galy Galiano', 'Las Hermanitas Calle', 'Joaquín Guiller',
-        'El Caballero Gaucho', 'Los Relicarios', 'Alexis Escobar', 'Darío Darío', 'Lady Yuliana', 'Alan Ramírez', 'Ciro Quiñónez', 'Gabriel Román', 'El Dueto Buriticá'
+        'Dario Gomez', 'Luis Alberto Posada', 'El Charrito Negro', 'Arelys Henao', 'Jhonny Rivera',
+        'Yeison Jimenez', 'Jessi Uribe', 'Luis Alfonso', 'Paola Jara', 'Alzate',
+        'Francy', 'Pipe Bueno', 'Jhon Alex Castano', 'Giovanny Ayala', 'Luisito Munoz',
+        'Fernando Burbano', 'El Andariego', 'Galy Galiano', 'Las Hermanitas Calle', 'Joaquin Guiller',
+        'El Caballero Gaucho', 'Los Relicarios', 'Alexis Escobar', 'Dario Dario', 'Lady Yuliana', 'Alan Ramirez', 'Ciro Quinonez', 'Gabriel Roman', 'El Dueto Buritica'
     ],
     'ranchera': [
-        'Vicente Fernández', 'Pedro Infante', 'Jorge Negrete', 'Javier Solís', 'José Alfredo Jiménez',
-        'Antonio Aguilar', 'Lola Beltrán', 'Lucha Villa', 'Miguel Aceves Mejía', 'Chavela Vargas',
-        'Rocío Dúrcal', 'Alejandro Fernández', 'Pepe Aguilar', 'Amalia Mendoza', 'Aída Cuevas',
-        'Juan Gabriel', 'Pedro Fernández', 'Cuco Sánchez', 'Luis Aguilar', 'Yolanda del Río',
+        'Vicente Fernandez', 'Pedro Infante', 'Jorge Negrete', 'Javier Solis', 'Jose Alfredo Jimenez',
+        'Antonio Aguilar', 'Lola Beltran', 'Lucha Villa', 'Miguel Aceves Mejia', 'Chavela Vargas',
+        'Rocio Durcal', 'Alejandro Fernandez', 'Pepe Aguilar', 'Amalia Mendoza', 'Aida Cuevas',
+        'Juan Gabriel', 'Pedro Fernandez', 'Cuco Sanchez', 'Luis Aguilar', 'Yolanda del Rio',
         'Chayito Valdez', 'Cornelio Reyna', 'Gerardo Reyes', 'Francisco Charro Avitia', 'Flor Silvestre',
-        'Enriqueta Jiménez', 'Tito Guízar', 'David Záizar', 'Demetrio González', 'Matilde Sánchez',
-        'María de Lourdes', 'Christian Nodal', 'Ángela Aguilar', 'Lucero', 'Ana Gabriel',
-        'Paquita la del Barrio', 'Guadalupe Pineda', 'Irma Serrano', 'Luis Miguel', 'Mariachi Vargas de Tecalitlán'
+        'Enriqueta Jimenez', 'Tito Guizar', 'David Zaiizar', 'Demetrio Gonzalez', 'Matilde Sanchez',
+        'Maria de Lourdes', 'Christian Nodal', 'Angela Aguilar', 'Lucero', 'Ana Gabriel',
+        'Paquita la del Barrio', 'Guadalupe Pineda', 'Irma Serrano', 'Luis Miguel', 'Mariachi Vargas de Tecalitlan'
     ],
     'norteña': [
         'Los Tigres del Norte', 'Ramón Ayala y Sus Bravos del Norte', 'Los Cadetes de Linares', 'Los Invasores de Nuevo León', 'Los Cardenales de Nuevo León',
@@ -546,27 +631,27 @@ const GENRE_ARTISTS: { [key: string]: string[] } = {
         'Conjunto Primavera', 'Los Relámpagos del Norte', 'Carlos Y José', 'Los Alegres de Terán', 'Lalo Mora',
         'Cornelio Reyna', 'Los Rieleros del Norte', 'Calibre 50', 'Los Dos Carnales', 'El Fantasma',
         'Grupo Exterminador', 'Uriel Henao', 'Jimmy Gutiérrez', 'Rey Fonseca', 'Águilas del Norte',
-        'Grupo Mezcal', 'Jhon Jairo Pérez', 'Humberto Díaz', 'Los Originales de San Juan', 'Los Traileros del Norte',
-        'Eliseo Robles', 'Voz de Mando', 'Gerardo Ortiz', 'Alfredo Olivas', 'Julión Álvarez y su Norteño Banda',
-        'Los Inquietos del Norte', 'Edén Muñoz', 'Luis R Conriquez', 'Los Buitres de Culiacán Sinaloa', 'Ariel Camacho y Los Plebes del Rancho'
+        'Grupo Mezcal', 'Jhon Jairo Perez', 'Humberto Diaz', 'Los Originales de San Juan', 'Los Traileros del Norte',
+        'Eliseo Robles', 'Voz de Mando', 'Gerardo Ortiz', 'Alfredo Olivas', 'Julion Alvarez y su Norteno Banda',
+        'Los Inquietos del Norte', 'Eden Munoz', 'Luis R Conriquez', 'Los Buitres de Culiacan Sinaloa', 'Ariel Camacho y Los Plebes del Rancho'
     ],
     'cumbia villera': [
         'Damas Gratis', 'Pibes Chorros', 'Yerba Brava', 'Mala Fama', 'Supermerk2',
-        'Meta Guacha', 'Flor de Piedra', 'Los Gedes', 'Altos Cumbieros', 'Néstor en Bloque',
+        'Meta Guacha', 'Flor de Piedra', 'Los Gedes', 'Altos Cumbieros', 'Nestor en Bloque',
         'La Base', 'El Original', 'El Polaco', 'La Repandilla', 'La Liga',
-        'Amar Azul', 'Pala Ancha', 'Guachín', 'Eh Guacho', 'El Empuje',
+        'Amar Azul', 'Pala Ancha', 'Guachin', 'Eh Guacho', 'El Empuje',
         'Los Pibes del Penal', 'Me Dicen Fideo', 'Repiola', 'El Dipy', 'El Pepo',
-        'Jimmy y su Combo Negro', 'Bajo Palabra', 'Mala Gata', 'Agrupación Marilyn', 'Los Chicos de la Vía'
+        'Jimmy y su Combo Negro', 'Bajo Palabra', 'Mala Gata', 'Agrupacion Marilyn', 'Los Chicos de la Via'
     ],
-    'rock en español': [
-        'Soda Stereo', 'Héroes del Silencio', 'Caifanes', 'Café Tacvba', 'Los Prisioneros',
-        'Charly García', 'Luis Alberto Spinetta', 'Enanitos Verdes', 'Maná', 'Aterciopelados',
-        'La Ley', 'Molotov', 'Patricio Rey y sus Redonditos de Ricota', 'Andrés Calamaro', 'Fito Páez',
-        'Los Fabulosos Cadillacs', 'Maldita Vecindad y los Hijos del Quinto Patio', 'El Tri', 'Radio Futura', 'Zoé',
+    'rock en espanol': [
+        'Soda Stereo', 'Heroes del Silencio', 'Caifanes', 'Cafe Tacvba', 'Los Prisioneros',
+        'Charly Garcia', 'Luis Alberto Spinetta', 'Enanitos Verdes', 'Mana', 'Aterciopelados',
+        'La Ley', 'Molotov', 'Patricio Rey y sus Redonditos de Ricota', 'Andres Calamaro', 'Fito Paez',
+        'Los Fabulosos Cadillacs', 'Maldita Vecindad y los Hijos del Quinto Patio', 'El Tri', 'Radio Futura', 'Zoe',
         'Los Tres', 'Extremoduro', 'El Cuarteto de Nos', 'Babasónicos', 'No Te Va Gustar',
         'Jaguares', 'Nacha Pop', 'Duncan Dhu', 'Kraken', 'Lucybell', 'Mago de Oz','Rata Blanca', 'Doctor Krapula',
-        'Miguel Ríos', 'Los Rodríguez', 'Serú Girán', 'Los Auténticos Decadentes', 'Panteón Rococó',
-        'La Vela Puerca', 'M-Clan', 'Loquillo y los Trogloditas', 'El Último de la Fila', 'Kinky', 'Hombres G', 'Los Caligaris', 'inspector'
+        'Miguel Rios', 'Los Rodriguez', 'Seru Giran', 'Los Autenticos Decadentes', 'Panteon Rococo',
+        'La Vela Puerca', 'M-Clan', 'Loquillo y los Trogloditas', 'El Ultimo de la Fila', 'Kinky', 'Hombres G', 'Los Caligaris', 'inspector'
     ]
 };
 
@@ -675,7 +760,78 @@ const yearPlaylistMap: Record<number, string> = {
 
 // Función para obtener TODAS las canciones de un artista desde TODOS sus álbumes
 // Con un pool de 150 canciones aleatorias, deduplicadas, filtradas y shuffled en cada partida
-async function getAllTracksFromArtistAlbums(artistId: number, limit: number = 50): Promise<Song[]> {
+/**
+ * Obtiene canciones de un artista - HÍBRIDO: intenta top tracks primero,
+ * si insuficientes, complementa con álbumes
+ */
+async function getArtistTracksHybrid(artistId: number, limit: number = 75): Promise<Song[]> {
+  try {
+    console.log(`\n  [HÍBRIDO] Intentando top tracks primero (limit: ${limit})...`);
+    
+    // Paso 1: Intenta obtener top tracks (1 petición HTTP)
+    const topTracksResponse = await axios.get(`${DEEZER_API}/artist/${artistId}/top`, {
+      params: { limit: Math.max(75, limit) }
+    });
+
+    const topTracks: Song[] = [];
+    if (topTracksResponse.data.data) {
+      for (const track of topTracksResponse.data.data) {
+        if (!track.preview) continue;
+        if (shouldRejectTitle(track.title)) continue;
+
+        topTracks.push({
+          id: track.id.toString(),
+          name: track.title,
+          artist: track.artist.name,
+          previewUrl: track.preview,
+          albumArt: track.album?.cover_big || track.album?.cover_medium || '',
+          spotifyUrl: track.link || '',
+          albumName: track.album?.title,
+        });
+      }
+    }
+    
+    console.log(`  ✓ Top tracks: ${topTracks.length} válidas`);
+    
+    // Paso 2: Si hay suficientes, retornarlas (MODO RÁPIDO)
+    if (topTracks.length >= 50) {
+      console.log(`  ✓ SUFICIENTES (${topTracks.length} >= 50). Sin álbumes.`);
+      const shuffled = fisherYatesShuffle(topTracks);
+      return shuffled.slice(0, limit);
+    }
+    
+    // Paso 3: Si insuficientes, complementar con álbumes (MODO COMPLETO)
+    console.log(`  ⚠️ INSUFICIENTES (${topTracks.length} < 50). Complementando con álbumes...`);
+    const albumTracks = await getAllTracksFromArtistAlbums(artistId, limit);
+    
+    // Combinar y deduplicar
+    const combined = [...topTracks, ...albumTracks];
+    const deduped = dedupeByIdentity(combined);
+    const shuffled = fisherYatesShuffle(deduped);
+    
+    console.log(`  ✓ RESULTADO: ${shuffled.length} canciones (top+álbumes)`);
+    return shuffled.slice(0, limit);
+    
+  } catch (error) {
+    console.error('  Error in getArtistTracksHybrid:', error);
+    // En caso de error, intentar álbumes como fallback
+    return await getAllTracksFromArtistAlbums(artistId, limit);
+  }
+}
+
+/**
+ * Fisher-Yates shuffle
+ */
+function fisherYatesShuffle<T>(array: T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+async function getAllTracksFromArtistAlbums(artistId: number, limit: number = 50, isHybridBackup: boolean = false): Promise<Song[]> {
   try {
     console.log(`\n=== NUEVA PARTIDA - Artist ID: ${artistId} ===`);
     
@@ -805,110 +961,328 @@ async function getAllTracksFromArtistAlbums(artistId: number, limit: number = 50
 
 export async function searchByArtist(artistName: string, limit: number = 50): Promise<Song[]> {
   try {
-    console.log(`Searching Deezer for artist: ${artistName}`);
+    console.log(`[searchByArtist] Searching: ${artistName}`);
     
-    // Paso 1: Buscar al artista para obtener su ID
+    // Buscar artista - revisar más resultados para encontrar mejor match
     const artistSearch = await axios.get(`${DEEZER_API}/search/artist`, {
       params: {
         q: artistName,
-        limit: 1
+        limit: 50  // Aumentado a 50 para evaluar múltiples opciones
       }
     });
 
     if (!artistSearch.data.data || artistSearch.data.data.length === 0) {
-      console.log('Artist not found');
+      console.log(`[searchByArtist] ❌ No results for: ${artistName}`);
       return [];
     }
 
-    const artist = artistSearch.data.data[0];
-    const artistId = artist.id;
-    console.log(`Found artist: ${artist.name} (ID: ${artistId})`);
+    // NUEVA LÓGICA: Ordenar por followers (descendente), luego verificar match
+    const artistsByFollowers = artistSearch.data.data.sort((a: any, b: any) => {
+      return (b.nb_fan || 0) - (a.nb_fan || 0);
+    });
 
-    // Paso 2: Obtener TODAS las canciones desde todos los álbumes
-    const tracks = await getAllTracksFromArtistAlbums(artistId, limit);
+    let bestArtist = null;
+    let bestScore = -1;
 
-    console.log(`Found ${tracks.length} tracks with previews for ${artistName}`);
-    return tracks;
+    // MÁS ESTRICTO: Búsqueda de artista específica - threshold 0.85 (match muy exacto)
+    for (const candidate of artistsByFollowers) {
+      const score = calculateMatchScore(artistName, candidate.name);
+      if (score >= 0.85) {
+        bestArtist = candidate;
+        bestScore = score;
+        break;  // Toma el primero que cumpla (máximo followers en ese rango)
+      }
+    }
+
+    if (!bestArtist) {
+      console.log(`[searchByArtist] ❌ No matches found for: ${artistName}`);
+      return [];
+    }
+
+    console.log(`[searchByArtist] ✓ Best match: "${bestArtist.name}" (followers: ${bestArtist.nb_fan || 0}, score: ${bestScore.toFixed(2)})`);
+
+    // Obtener TOP TRACKS directamente
+    const topTracksUrl = `${DEEZER_API}/artist/${bestArtist.id}/top?limit=${limit}`;
+    const tracksResponse = await axios.get(topTracksUrl);
+    
+    if (!tracksResponse.data.data || tracksResponse.data.data.length === 0) {
+      console.log(`[searchByArtist] ❌ No tracks found for: ${bestArtist.name}`);
+      return [];
+    }
+
+    // Convertir a formato Song - sin filtros adicionales
+    const songs: Song[] = tracksResponse.data.data
+      .map((track: any) => ({
+        id: track.id.toString(),
+        name: track.title,
+        artist: track.artist.name,
+        previewUrl: track.preview || null,
+        albumArt: track.album?.cover_medium || track.album?.cover_big || '',
+        spotifyUrl: '',
+        releaseYear: extractYearFromDate(track.release_date),
+        albumName: track.album?.title
+      }))
+      .filter((song: Song) => song.previewUrl !== null && song.previewUrl.trim() !== '');
+
+    console.log(`[searchByArtist] ✓ Got ${songs.length} tracks from "${bestArtist.name}"`);
+    return songs;
   } catch (error) {
     console.error('Error in searchByArtist:', error);
     return [];
   }
 }
 
-export async function searchByGenre(genre: string, limit: number = 50): Promise<Song[]> {
+export async function searchByGenre(genre: string, limit: number = 2000): Promise<Song[]> {
   try {
-    console.log(`Searching Deezer for genre: ${genre}`);
+    console.log(`🎵 [searchByGenre] Searching: ${genre}`);
     
     const genreKey = genre.toLowerCase();
-    let allTracks: Song[] = [];
-    const seen = new Set<string>();
-
-    // Obtener artistas clave para este género (solo de GENRE_ARTISTS)
-    const genreArtists = GENRE_ARTISTS[genreKey];
+    let genreArtists = GENRE_ARTISTS[genreKey];
+    
+    if (!genreArtists) {
+      console.log(`Genre key '${genreKey}' not found. Trying variants...`);
+      const altKey1 = genreKey.replace(/-/g, ' ');
+      const altKey2 = genreKey.replace(/ /g, '-');
+      genreArtists = GENRE_ARTISTS[altKey1] || GENRE_ARTISTS[altKey2];
+    }
     
     if (!genreArtists || genreArtists.length === 0) {
-      console.log(`No artists found for genre: ${genre}`);
+      console.error(`❌ ERROR: No artists found for genre: ${genre}`);
       return [];
     }
 
-    console.log(`Found ${genreArtists.length} key artists for ${genre}`);
+    console.log(`✓ Found ${genreArtists.length} artists for ${genre}`);
+    const artistsToUse = genreArtists.slice(0, MAX_ARTISTS_PER_GENRE);
+    console.log(`Using ${artistsToUse.length} artists (max: ${MAX_ARTISTS_PER_GENRE})`);
 
-    // Para cada artista, obtener TODAS sus canciones desde álbumes
-    for (const artistName of genreArtists) {
+    let allTracks: Song[] = [];
+    const seen = new Set<string>();
+    let successfulArtistsCount = 0;
+
+    // Para cada artista, buscar y obtener sus top tracks
+    for (const artistName of artistsToUse) {
       if (allTracks.length >= limit) break;
 
       try {
-        // Paso 1: Buscar el ID del artista
-        const artistSearchResponse = await axios.get(`${DEEZER_API}/search/artist`, {
+        // Buscar artista - revisar más resultados para encontrar mejor match
+        const artistSearch = await axios.get(`${DEEZER_API}/search/artist`, {
           params: {
             q: artistName,
-            limit: 1
+            limit: 50
           }
         });
 
-        if (!artistSearchResponse.data.data || artistSearchResponse.data.data.length === 0) {
-          console.log(`Artist not found: ${artistName}`);
+        if (!artistSearch.data.data || artistSearch.data.data.length === 0) {
+          console.warn(`✗ ${artistName}: No results`);
           continue;
         }
 
-        const artist = artistSearchResponse.data.data[0];
-        console.log(`Found artist: ${artist.name} (searching for "${artistName}")`);
+        // NUEVA LÓGICA: Ordenar por followers (descendente), tomar El PRIMERO con score >= 0.4
+        const artistsByFollowers = artistSearch.data.data.sort((a: any, b: any) => {
+          return (b.nb_fan || 0) - (a.nb_fan || 0);
+        });
 
-        // Paso 2: Obtener TODAS las canciones de este artista desde sus álbumes
-        const tracksPerArtist = Math.ceil((limit - allTracks.length) / Math.max(genreArtists.length - genreArtists.indexOf(artistName), 5));
-        const artistTracks = await getAllTracksFromArtistAlbums(artist.id, tracksPerArtist);
+        let bestArtist = null;
+        let bestScore = -1;
 
-        if (artistTracks.length === 0) {
-          console.log(`No tracks found for artist: ${artist.name}`);
+        // MÁS ESTRICTO: Búsqueda de género - threshold 0.80 (requiere match cercano)
+        for (const candidate of artistsByFollowers) {
+          const score = calculateMatchScore(artistName, candidate.name);
+          if (score >= 0.80) {
+            bestArtist = candidate;
+            bestScore = score;
+            break;
+          }
+        }
+
+        if (!bestArtist) {
+          console.warn(`✗ ${artistName}: No matches found (threshold: 0.80)`);
           continue;
         }
 
-        // Agregar canciones únicas
-        for (const track of artistTracks) {
+        console.log(`✓ ${artistName} → matched to "${bestArtist.name}" (followers: ${bestArtist.nb_fan || 0})`);
+        successfulArtistsCount++;
+
+        // Obtener TOP TRACKS directamente
+        const remainingSlots = limit - allTracks.length;
+        const artistsRemaining = artistsToUse.length - artistsToUse.indexOf(artistName);
+        const tracksPerArtist = Math.ceil(remainingSlots / Math.max(1, artistsRemaining));
+        
+        const topTracksUrl = `${DEEZER_API}/artist/${bestArtist.id}/top?limit=${tracksPerArtist}`;
+        const tracksResponse = await axios.get(topTracksUrl);
+        
+        if (!tracksResponse.data.data || tracksResponse.data.data.length === 0) {
+          console.log(`  No tracks for: ${bestArtist.name}`);
+          continue;
+        }
+
+        // Convertir a formato Song
+        let addedCount = 0;
+        for (const track of tracksResponse.data.data) {
           if (allTracks.length >= limit) break;
-          if (seen.has(track.id)) continue;
+          if (!track.preview || track.preview.trim() === '') continue;
           
-          seen.add(track.id);
-          allTracks.push(track);
+          const songId = track.id.toString();
+          if (seen.has(songId)) continue;
+          
+          const song: Song = {
+            id: songId,
+            name: track.title,
+            artist: track.artist.name,
+            previewUrl: track.preview,
+            albumArt: track.album?.cover_medium || track.album?.cover_big || '',
+            spotifyUrl: '',
+            releaseYear: extractYearFromDate(track.release_date),
+            albumName: track.album?.title
+          };
+          
+          seen.add(songId);
+          allTracks.push(song);
+          addedCount++;
         }
 
-        console.log(`Added ${Math.min(artistTracks.length, tracksPerArtist)} tracks from ${artist.name}`);
+        console.log(`  ✓ Added ${addedCount} tracks from ${bestArtist.name}`);
 
       } catch (e) {
-        console.error(`Error fetching artist "${artistName}":`, e);
+        console.error(`✗ Error with artist "${artistName}":`, e);
         continue;
       }
     }
 
     if (allTracks.length === 0) {
-      console.log(`No tracks found for genre: ${genre}`);
+      console.error(`❌ ERROR: No tracks found for genre: ${genre}`);
       return [];
     }
 
-    console.log(`Found ${allTracks.length} total tracks for ${genre}, returning ${Math.min(allTracks.length, limit)}`);
-    return allTracks.slice(0, limit);
+    console.log(`✓ Got ${allTracks.length} total tracks from ${successfulArtistsCount} artists`);
+    return allTracks;
   } catch (error) {
     console.error('Error in searchByGenre:', error);
+    return [];
+  }
+}
+
+/**
+ * VERSUS GENRE MODE: Select random artists and get 1 random track from their top 10
+ * Ensures no artist appears twice in a single game
+ */
+export async function searchGenreForVersus(genre: string, songCount: number = 20): Promise<Song[]> {
+  try {
+    console.log(`[VERSUS MODE] Fetching ${songCount} songs from ${genre} (1 per random artist)`);
+
+    const genreKey = genre.toLowerCase();
+    let genreArtists = GENRE_ARTISTS[genreKey];
+    
+    if (!genreArtists) {
+      const altKey1 = genreKey.replace(/-/g, ' ');
+      const altKey2 = genreKey.replace(/ /g, '-');
+      genreArtists = GENRE_ARTISTS[altKey1] || GENRE_ARTISTS[altKey2];
+    }
+
+    if (!genreArtists || genreArtists.length === 0) {
+      console.error(`[VERSUS MODE] No artists found for genre: ${genre}`);
+      return [];
+    }
+
+    // Limit to MAX_ARTISTS_PER_GENRE
+    const availableArtists = genreArtists.slice(0, MAX_ARTISTS_PER_GENRE);
+    const artistsToSelect = Math.min(songCount, availableArtists.length);
+    
+    // Shuffle and select random artists
+    const shuffledArtists = fisherYatesShuffle([...availableArtists]).slice(0, artistsToSelect);
+    console.log(`[VERSUS MODE] Selected ${shuffledArtists.length} random artists`);
+
+    const versusSongs: Song[] = [];
+    const seen = new Set<string>();
+
+    for (const artistName of shuffledArtists) {
+      try {
+        // Buscar artista - revisar más resultados para encontrar mejor match
+        const artistSearch = await axios.get(`${DEEZER_API}/search/artist`, {
+          params: {
+            q: artistName,
+            limit: 50
+          }
+        });
+
+        if (!artistSearch.data.data || artistSearch.data.data.length === 0) {
+          console.warn(`[VERSUS MODE] ✗ ${artistName}: No results`);
+          continue;
+        }
+
+        // NUEVA LÓGICA: Ordenar por followers (descendente), tomar el PRIMERO con score >= 0.4
+        const artistsByFollowers = artistSearch.data.data.sort((a: any, b: any) => {
+          return (b.nb_fan || 0) - (a.nb_fan || 0);
+        });
+
+        let bestArtist = null;
+
+        // MÁS ESTRICTO: Búsqueda de género - threshold 0.80 (requiere match cercano)
+        for (const candidate of artistsByFollowers) {
+          const score = calculateMatchScore(artistName, candidate.name);
+          if (score >= 0.80) {
+            bestArtist = candidate;
+            break;
+          }
+        }
+
+        if (!bestArtist) {
+          console.warn(`[VERSUS MODE] ✗ Artist not found: ${artistName} (threshold: 0.80)`);
+          continue;
+        }
+
+        // Get top 10 tracks directly from API
+        const tracksResponse = await axios.get(`${DEEZER_API}/artist/${bestArtist.id}/top?limit=10`);
+        
+        if (!tracksResponse.data.data || tracksResponse.data.data.length === 0) {
+          console.warn(`[VERSUS MODE] ✗ No tracks for artist: ${bestArtist.name}`);
+          continue;
+        }
+
+        // Get valid tracks (with preview URLs)
+        const validTracks = tracksResponse.data.data.filter((t: any) => t.preview && t.preview.trim() !== '');
+        
+        if (validTracks.length === 0) {
+          console.warn(`[VERSUS MODE] ✗ No tracks with preview for artist: ${bestArtist.name}`);
+          continue;
+        }
+
+        // Randomly select 1 from the top tracks
+        const randomTrackData = validTracks[Math.floor(Math.random() * validTracks.length)];
+        
+        // Check for duplicates using song ID
+        const trackId = randomTrackData.id.toString();
+        if (seen.has(trackId)) {
+          console.log(`[VERSUS MODE] ⊘ Skipped duplicate: ${bestArtist.name} - ${randomTrackData.title}`);
+          continue;
+        }
+
+        // Convert to Song format
+        const song: Song = {
+          id: trackId,
+          name: randomTrackData.title,
+          artist: randomTrackData.artist.name,
+          previewUrl: randomTrackData.preview,
+          albumArt: randomTrackData.album?.cover_medium || randomTrackData.album?.cover_big || '',
+          spotifyUrl: '',
+          releaseYear: extractYearFromDate(randomTrackData.release_date),
+          albumName: randomTrackData.album?.title
+        };
+        
+        seen.add(trackId);
+        versusSongs.push(song);
+        console.log(`[VERSUS MODE] ✓ Added 1/10 from ${bestArtist.name}: "${song.name}"`);
+
+      } catch (error) {
+        console.error(`[VERSUS MODE] Error with artist "${artistName}":`, error);
+        continue;
+      }
+    }
+
+    console.log(`[VERSUS MODE] ✅ Loaded ${versusSongs.length} songs from unique artists`);
+    return versusSongs;
+  } catch (error) {
+    console.error('[VERSUS MODE] Error in searchGenreForVersus:', error);
     return [];
   }
 }

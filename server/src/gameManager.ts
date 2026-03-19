@@ -67,6 +67,8 @@ export function createRoom(playerName: string, playerId: string, playerAvatar: n
     totalRounds: 0,
     isGameStarted: false,
     createdAt: Date.now(),
+    artistRoundHistory: new Map(),
+    roundArtists: new Map(),
   };
   
   rooms.set(roomId, room);
@@ -203,46 +205,6 @@ function filterOutRemixesAllowInstrumental(songs: Song[]): Song[] {
 }
 
 // ============================================================
-// Filtro por artista principal: solo canciones donde el artista es el especificado
-// (sin features, colaboraciones, etc)
-// ============================================================
-function filterByPrimaryArtist(songs: Song[], targetArtistName: string): Song[] {
-  const normalizeArtistName = (name: string): string => {
-    return name
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s]/g, '') // Remover caracteres especiales
-      .replace(/\s+/g, ' '); // Normalizar espacios
-  };
-
-  const targetNormalized = normalizeArtistName(targetArtistName);
-
-  return songs.filter(song => {
-    // Verificar si el artista aparece en el campo de artista (como substring)
-    // Incluye: artista principal, features (ft., feat., &, x, etc)
-    const songArtistNormalized = normalizeArtistName(song.artist);
-    const isMatch = songArtistNormalized.includes(targetNormalized);
-    
-    if (!isMatch) {
-      console.log(`[filterByArtist] Filtered out: "${song.name}" by ${song.artist}`);
-    }
-
-    // Exclusión especial: Taylor Swift - excluir "reputation Stadium Tour Surprise Song Playlist"
-    if (isMatch && normalizeArtistName(targetArtistName) === normalizeArtistName('taylor swift')) {
-      const albumNormalized = normalizeArtistName(song.albumName || '');
-      const excludeAlbumNormalized = normalizeArtistName('reputation Stadium Tour Surprise Song Playlist');
-      
-      if (albumNormalized === excludeAlbumNormalized) {
-        console.log(`[filterByArtist] Excluded Taylor Swift track: "${song.name}" from excluded album: ${song.albumName}`);
-        return false;
-      }
-    }
-
-    return isMatch;
-  });
-}
-
-// ============================================================
 // Carga de canciones para modos que NO son year
 // ============================================================
 async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
@@ -267,21 +229,7 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
           console.log(`[fetchSongsForConfig] Fetching by artist: ${config.artist}`);
           const songs = await deezer.searchByArtist(config.artist, 300);
           console.log(`[fetchSongsForConfig] Got ${songs.length} songs from artist search`);
-          const filtered = filterOutRemixes(songs);
-          console.log(`[fetchSongsForConfig] After filtering remixes: ${filtered.length} songs`);
-          
-          // Filtro adicional: solo canciones del artista principal (sin features)
-          const filteredByPrimaryArtist = filterByPrimaryArtist(filtered, config.artist);
-          console.log(`[fetchSongsForConfig] After filtering by primary artist: ${filteredByPrimaryArtist.length} songs`);
-          
-          // Show first 3 and last 3
-          if (filteredByPrimaryArtist.length > 0) {
-            console.log(`[fetchSongsForConfig] First 3: ${filteredByPrimaryArtist.slice(0, 3).map(s => `"${s.name}" (${s.artist}) (preview: ${s.previewUrl ? 'YES' : 'NO'})`).join(', ')}`);
-            if (filteredByPrimaryArtist.length > 3) {
-              console.log(`[fetchSongsForConfig] Last 3: ${filteredByPrimaryArtist.slice(-3).map(s => `"${s.name}" (${s.artist}) (preview: ${s.previewUrl ? 'YES' : 'NO'})`).join(', ')}`);
-            }
-          }
-          return filteredByPrimaryArtist;
+          return songs; // Sin filtros adicionales
         }
         break;
         
@@ -316,15 +264,12 @@ async function fetchSongsForConfig(config: GameConfig): Promise<Song[]> {
 async function fetchSongsForVersus(type: string, value: string): Promise<Song[]> {
   switch (type) {
     case 'artist':
-      const artistSongs = await deezer.searchByArtist(value, 150);
-      const filteredRemixes = filterOutRemixes(artistSongs);
-      // Filtro adicional: solo artista principal
-      return filterByPrimaryArtist(filteredRemixes, value);
+      return await deezer.searchByArtist(value, 150); // Sin filtros
     case 'year':
       return await deezer.searchByYear(parseInt(value), 25);
     case 'genre':
-      const genreSongs = await deezer.searchByGenre(value, 50);
-      return filterOutRemixes(genreSongs);
+      // VERSUS GENRE MODE: Get 1 song from 20 different random artists
+      return await deezer.searchGenreForVersus(value, 20);
     case 'decade':
       const decade = parseInt(value);
       return await deezer.searchByDecade(decade, decade + 9, 50);
@@ -599,6 +544,112 @@ export async function startGame(
   }
 }
 
+/**
+ * Selecciona canciones con distancia mínima entre artistas.
+ * Asegura que el mismo artista no aparezca en rondas consecutive.
+ */
+function selectSongsWithArtistDistancing(
+  songs: Song[],
+  songsPerRound: number,
+  roundNumber: number,
+  room: Room,
+  minDistance: number = 1
+): Song[] {
+  // Extraer artistas únicos de las canciones disponibles
+  const artistSongsMap = new Map<string, Song[]>();
+  for (const song of songs) {
+    if (!artistSongsMap.has(song.artist)) {
+      artistSongsMap.set(song.artist, []);
+    }
+    artistSongsMap.get(song.artist)!.push(song);
+  }
+
+  const { artistRoundHistory = new Map() } = room;
+
+  // Intentar seleccionar artistas respetando la distancia deseada
+  // Si no hay suficientes, reducir la distancia progresivamente
+  let availableArtists: string[] = [];
+  let currentMinDistance = minDistance;
+
+  while (availableArtists.length < songsPerRound && currentMinDistance >= 0) {
+    availableArtists = [];
+    
+    for (const artist of artistSongsMap.keys()) {
+      const lastRound = artistRoundHistory.get(artist);
+      
+      // Si nunca apareció o respeta la distancia mínima, está disponible
+      if (lastRound === undefined || (roundNumber - lastRound) > currentMinDistance) {
+        availableArtists.push(artist);
+      }
+    }
+    
+    // Si encontramos suficientes artistas, salir del loop
+    if (availableArtists.length >= songsPerRound) {
+      break;
+    }
+    
+    // Reducir la distancia y intentar de nuevo
+    currentMinDistance--;
+  }
+
+  // Si aún no hay suficientes, usar todos los artistas disponibles
+  const artistsToUse = availableArtists.length > 0 ? availableArtists : Array.from(artistSongsMap.keys());
+  
+  // Determinar cuántos artistas seleccionar
+  const selectedArtistsCount = Math.min(songsPerRound, artistsToUse.length);
+  
+  console.log(
+    `[SelectSongs] Round ${roundNumber}: ` +
+    `Available artists: ${availableArtists.length}/${artistSongsMap.size}, ` +
+    `Selecting ${selectedArtistsCount} artists for ${songsPerRound} songs, ` +
+    `minDistance: ${currentMinDistance} (requested: ${minDistance})`
+  );
+
+  // Seleccionar artistas al azar usando Fisher-Yates shuffle
+  const shuffledArtists = fisherYatesShuffle(artistsToUse);
+  const selectedArtists = shuffledArtists.slice(0, selectedArtistsCount);
+
+  // Para cada artista, seleccionar 1 canción al azar
+  const selectedSongs: Song[] = [];
+  const roundArtistsSet = new Set<string>();
+
+  for (const artist of selectedArtists) {
+    const artistSongs = artistSongsMap.get(artist)!;
+    const randomSong = artistSongs[Math.floor(Math.random() * artistSongs.length)];
+    selectedSongs.push(randomSong);
+    roundArtistsSet.add(artist);
+
+    // Actualizar historial: este artista acaba de aparecer en esta ronda
+    if (!room.artistRoundHistory) {
+      room.artistRoundHistory = new Map();
+    }
+    room.artistRoundHistory.set(artist, roundNumber);
+  }
+
+  // Hacer shuffle de las canciones finales para que no salgan en orden
+  const shuffledSongs = fisherYatesShuffle(selectedSongs);
+
+  // Guardar artistas de esta ronda para referencia futura
+  if (!room.roundArtists) {
+    room.roundArtists = new Map();
+  }
+  room.roundArtists.set(roundNumber, roundArtistsSet);
+
+  console.log(
+    `[SelectSongs] Round ${roundNumber} artists: ${selectedArtists.join(', ')}`
+  );
+  
+  return shuffledSongs;
+}
+
+function fisherYatesShuffle<T>(array: T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
 
 export async function generateRound(roomId: string): Promise<Round | null> {
   const room = rooms.get(roomId);
@@ -684,16 +735,46 @@ export async function generateRound(roomId: string): Promise<Round | null> {
     selectedSongs = shuffled.slice(0, songsPerRound);
   }
   else {
-    // Para otros modos, usar las canciones pre-cargadas
+    // Para otros modos (genre, artist, etc.), usar las canciones pre-cargadas
     const availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
     
     if (availableSongs.length < songsPerRound) {
       console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
       return null;
     }
-    
-    const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
-    selectedSongs = shuffled.slice(0, songsPerRound);
+
+    // MODE ESPECÍFICO: ARTIST
+    // En modo artista, NO usar artist distancing. Solo seleccionar canciones del pool.
+    if (selectionType === 'artist') {
+      console.log(`[SelectSongs] ARTIST MODE: Selecting ${songsPerRound} songs from ${availableSongs.length} available`);
+      const shuffled = availableSongs.sort(() => Math.random() - 0.5);
+      selectedSongs = shuffled.slice(0, songsPerRound);
+    } else {
+      // MODE ESPECÍFICO: GENRE o VERSUS
+      // Con múltiples artistas, usar artist distancing
+      const totalSongsNeeded = room.totalRounds * songsPerRound;
+      const estimatedArtists = 40;
+      
+      let dynamicMinDistance = Math.max(
+        0,
+        Math.floor((estimatedArtists / songsPerRound) - (room.totalRounds / 5))
+      );
+      
+      console.log(
+        `[DistanceCalc] GENRE/VERSUS MODE - Total songs needed: ${totalSongsNeeded}, ` +
+        `Estimated artists: ${estimatedArtists}, ` +
+        `Songs per round: ${songsPerRound}, ` +
+        `Calculated minDistance: ${dynamicMinDistance}`
+      );
+      
+      selectedSongs = selectSongsWithArtistDistancing(
+        availableSongs,
+        songsPerRound,
+        roundNumber,
+        room,
+        dynamicMinDistance
+      );
+    }
     
     // Marcar como usadas
     selectedSongs.forEach(song => room.usedSongIds.add(song.id));

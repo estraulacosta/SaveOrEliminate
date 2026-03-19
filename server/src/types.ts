@@ -70,4 +70,7 @@ export interface Room {
   versusSongsOption2?: Song[];
   versusUsedIndices1?: Set<number>;
   versusUsedIndices2?: Set<number>;
+  // Tracking de artistas por ronda (para distancia mínima)
+  artistRoundHistory?: Map<string, number>; // artista -> última ronda en que apareció
+  roundArtists?: Map<number, Set<string>>; // ronda -> conjunto de artistas en esa ronda
 }
