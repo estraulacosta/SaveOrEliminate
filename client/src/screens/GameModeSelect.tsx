@@ -1,6 +1,5 @@
 import type { GameMode } from '../types';
 import Header from '../components/Header';
-import { Heart, Trash2 } from 'lucide-react';
 
 interface GameModeSelectProps {
   onSelect: (mode: GameMode) => void;
@@ -22,10 +21,10 @@ export default function GameModeSelect({ onSelect, onBack }: GameModeSelectProps
           onClick={() => onSelect('save')}
           style={{ height: '220px', fontSize: '1.2rem', display: 'flex', flexDirection: 'column', gap: '20px', borderRadius: '24px', padding: '2rem', alignItems: 'center', justifyContent: 'center' }}
         >
-          <div style={{ color: 'var(--color-save)', display: 'flex', justifyContent: 'center' }}>
-            <Heart size={64} fill="currentColor" />
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <img src="/iconos/Save-it.svg" alt="Save" style={{ width: '64px', height: '64px' }} />
           </div>
-          SALVAR
+          SAVE IT 
         </button>
         
         <button 
@@ -34,10 +33,10 @@ export default function GameModeSelect({ onSelect, onBack }: GameModeSelectProps
           onClick={() => onSelect('eliminate')}
           style={{ height: '220px', fontSize: '1.2rem', display: 'flex', flexDirection: 'column', gap: '20px', borderRadius: '24px', padding: '2rem', alignItems: 'center', justifyContent: 'center' }}
         >
-          <div style={{ color: 'var(--color-eliminate)', display: 'flex', justifyContent: 'center' }}>
-            <Trash2 size={64} />
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <img src="/iconos/Kill-it.svg" alt="Kill" style={{ width: '64px', height: '64px' }} />
           </div>
-          ELIMINAR
+          KILL IT
         </button>
       </div>
     </div>
