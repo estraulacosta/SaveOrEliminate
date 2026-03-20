@@ -12,6 +12,7 @@ export interface Player {
   id: string;
   name: string;
   isHost: boolean;
+  avatar: number;
 }
 
 export type GameMode = 'save' | 'eliminate';
@@ -21,6 +22,7 @@ export interface GameConfig {
   mode: GameMode;
   selectionType: MusicSelectionType;
   songsPerRound: number;
+  totalRounds?: number;
   genre?: string;
   artist?: string;
   yearRange?: { start: number; end: number };

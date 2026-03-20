@@ -79,6 +79,11 @@ function App() {
       console.log(message);
     });
 
+    socket.on('game-loading', ({ loadedYears, totalYears }: { loadedYears: number; totalYears: number }) => {
+      setLoadingProgress({ loaded: loadedYears, total: totalYears });
+      setCurrentScreen('loading');
+    });
+
     socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, selectionType, mode }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string; mode?: string }) => {
       setCurrentRound(round);
       setTotalRounds(total);
@@ -197,12 +202,12 @@ function App() {
 
       case 'enter-name':
         return <EnterName
-          onSubmit={(name) => {
+          onSubmit={(name, avatar) => {
             setPlayerName(name);
             if (pendingRoomId) {
-              socket.emit('join-room', { roomId: pendingRoomId, playerName: name });
+              socket.emit('join-room', { roomId: pendingRoomId, playerName: name, playerAvatar: avatar });
             } else {
-              socket.emit('create-room', { playerName: name });
+              socket.emit('create-room', { playerName: name, playerAvatar: avatar });
             }
           }}
           onBack={goBack}
@@ -227,12 +232,14 @@ function App() {
 
       case 'music-setup-select':
         return <MusicSetupSelect
-          onSelectType={(type, songsPerRound) => {
+          onSelectType={(type, songsPerRound, totalRounds, yearRange, decadeRange) => {
             const config = { 
               ...gameConfig, 
               selectionType: type,
-              songsPerRound: songsPerRound || gameConfig.songsPerRound || 3
-            };
+              songsPerRound: songsPerRound || gameConfig.songsPerRound || 3,
+              totalRounds: totalRounds || gameConfig.totalRounds || 10
+            } as GameConfig;
+            
             if (type === 'genre') {
               setGameConfig(config);
               navigateTo('genre-select');
@@ -240,11 +247,23 @@ function App() {
               setGameConfig(config);
               navigateTo('artist-select');
             } else if (type === 'year') {
-              setGameConfig(config);
-              navigateTo('year-select');
+              const finalConfig = { 
+                ...config, 
+                yearRange,
+                totalRounds: undefined // Dejar que calculateTotalRounds haga el cálculo
+              } as GameConfig;
+              setGameConfig(finalConfig);
+              navigateTo('loading');
+              socket.emit('start-game', { roomId: room!.id, config: finalConfig });
             } else if (type === 'decade') {
-              setGameConfig(config);
-              navigateTo('decade-select');
+              const finalConfig = { 
+                ...config, 
+                decadeRange,
+                totalRounds: undefined // Dejar que calculateTotalRounds haga el cálculo
+              } as GameConfig;
+              setGameConfig(finalConfig);
+              navigateTo('loading');
+              socket.emit('start-game', { roomId: room!.id, config: finalConfig });
             } else if (type === 'versus') {
               setGameConfig(config);
               navigateTo('versus-select');
@@ -327,6 +346,7 @@ function App() {
           votes={votes}
           isHost={isHost}
           roomId={room!.id}
+          totalRounds={totalRounds}
           onNextRound={() => socket.emit('next-round', { roomId: room!.id })}
           onEndGame={() => socket.emit('end-game', { roomId: room!.id })}
         />;

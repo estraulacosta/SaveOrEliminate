@@ -87,7 +87,7 @@ export async function searchByArtist(artistName: string, limit: number = 50): Pr
           .trim(),
         artist: item.snippet.channelTitle,
         previewUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-        albumArt: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+        albumArt: item.snippet.thumbnails.maxres?.url || item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
         spotifyUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
       }))
       .slice(0, limit);
@@ -127,7 +127,7 @@ export async function searchByGenre(genre: string, limit: number = 50): Promise<
       name: item.snippet.title.replace(/\(Official.*\)/gi, '').replace(/\[Official.*\]/gi, '').trim(),
       artist: item.snippet.channelTitle,
       previewUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-      albumArt: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+      albumArt: item.snippet.thumbnails.maxres?.url || item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
       spotifyUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
     }));
   } catch (error) {
@@ -154,7 +154,7 @@ export async function searchByYear(year: number, limit: number = 50): Promise<So
       name: item.snippet.title.replace(/\(Official.*\)/gi, '').replace(/\[Official.*\]/gi, '').trim(),
       artist: item.snippet.channelTitle,
       previewUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-      albumArt: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+      albumArt: item.snippet.thumbnails.maxres?.url || item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
       spotifyUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
     }));
   } catch (error) {
@@ -182,7 +182,7 @@ export async function searchByDecade(startYear: number, endYear: number, limit: 
       name: item.snippet.title.replace(/\(Official.*\)/gi, '').replace(/\[Official.*\]/gi, '').trim(),
       artist: item.snippet.channelTitle,
       previewUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-      albumArt: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+      albumArt: item.snippet.thumbnails.maxres?.url || item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
       spotifyUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
     }));
   } catch (error) {
@@ -209,7 +209,7 @@ export async function getTopTracks(limit: number = 50): Promise<Song[]> {
       name: item.snippet.title.replace(/\(Official.*\)/gi, '').replace(/\[Official.*\]/gi, '').trim(),
       artist: item.snippet.channelTitle,
       previewUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-      albumArt: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+      albumArt: item.snippet.thumbnails.maxres?.url || item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
       spotifyUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
     }));
   } catch (error) {

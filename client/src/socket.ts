@@ -1,19 +1,15 @@
 import { io, Socket } from 'socket.io-client';
 
-// Conectar al servidor: en producción usa la variable de entorno, en desarrollo usa localhost
+// Conectar al servidor: en producción usa el mismo dominio, en desarrollo usa localhost:3001
 const getServerUrl = () => {
-  if (typeof window === 'undefined') return 'http://localhost:3001';
-  
-  const isProduction = !window.location.hostname.includes('localhost') && 
-                       !window.location.hostname.includes('127.0.0.1');
-  
-  if (isProduction) {
-    // En producción, usa la variable de entorno VITE_API_URL
-    // Si no está configurada, intenta usar el mismo dominio
-    return (import.meta as any).env.VITE_API_URL || window.location.origin;
+  // En producción, usa el mismo dominio/protocolo
+  // En desarrollo, conecta a localhost:3001
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `http://${window.location.hostname}:3001`;
   }
   
-  return 'http://localhost:3001';
+  // En producción (Railway o cualquier servidor), usa el mismo origen
+  return window.location.origin;
 };
 
 export const socket: Socket = io(getServerUrl(), {

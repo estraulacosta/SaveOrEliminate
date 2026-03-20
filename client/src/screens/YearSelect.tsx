@@ -55,70 +55,113 @@ export default function YearSelect({ onSelect, onBack }: YearSelectProps) {
       <h1 style={{ fontSize: 'clamp(1.5rem, 5vw, 3rem)' }}>SELECCIONA AÑOS</h1>
       
       <div className="card">
-        <div style={{ position: 'relative', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ 
+          position: 'relative', 
+          height: 'auto',
+          display: 'flex', 
+          flexDirection: 'column',
+          alignItems: 'stretch', 
+          justifyContent: 'center',
+          gap: 'clamp(1.5rem, 4vw, 3rem)'
+        }}>
           
-          {/* Visual Range Bar Background */}
-          <div style={{
-            position: 'absolute',
-            left: 0, right: 0,
-            top: '50%', marginTop: '-4px',
-            height: '8px',
-            background: 'rgba(255,255,255,0.1)',
-            borderRadius: '4px',
-            zIndex: 1
-          }}></div>
-
-          {/* Active Range Bar */}
-          <div style={{
-            position: 'absolute',
-            left: `${startPercent}%`,
-            width: `${endPercent - startPercent}%`,
-            top: '50%', marginTop: '-4px',
-            height: '8px',
-            background: 'var(--color-principal)',
-            borderRadius: '4px',
-            zIndex: 2,
-            boxShadow: '0 0 10px var(--color-principal)'
-          }}></div>
-
-          {/* Inputs (Invisible but clickable) */}
-          <input
-            type="range"
-            min={MIN_YEAR}
-            max={MAX_YEAR}
-            value={startYear}
-            onChange={handleStartChange}
-            style={{
+          {/* First Slider - Start Year */}
+          <div style={{ position: 'relative', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Visual Range Bar Background */}
+            <div style={{
               position: 'absolute',
-              width: '100%',
-              pointerEvents: 'none', // Allow clicking through... wait, range inputs need pointer events
-              appearance: 'none',
-              background: 'transparent',
-              zIndex: 3,
-              // We need to make the track invisible but thumb visible and clickable
-            }}
-            className="dual-range-slider"
-          />
-          <input
-            type="range"
-            min={MIN_YEAR}
-            max={MAX_YEAR}
-            value={endYear}
-            onChange={handleEndChange}
-            style={{
+              left: '0',
+              right: '0',
+              top: '50%',
+              marginTop: '-4px',
+              height: '8px',
+              background: 'rgba(255,255,255,0.1)',
+              borderRadius: '4px',
+              zIndex: 1
+            }}></div>
+
+            {/* Active Range Bar for start */}
+            <div style={{
               position: 'absolute',
-              width: '100%',
-              pointerEvents: 'none',
-              appearance: 'none',
-              background: 'transparent',
-              zIndex: 4,
-            }}
-            className="dual-range-slider"
-          />
+              left: '0',
+              width: `${startPercent}%`,
+              top: '50%',
+              marginTop: '-4px',
+              height: '8px',
+              background: 'var(--color-principal)',
+              borderRadius: '4px',
+              zIndex: 2,
+              boxShadow: '0 0 10px var(--color-principal)'
+            }}></div>
+
+            {/* Start Year Slider */}
+            <input
+              type="range"
+              min={MIN_YEAR}
+              max={MAX_YEAR}
+              value={startYear}
+              onChange={handleStartChange}
+              style={{
+                position: 'absolute',
+                width: '100%',
+                appearance: 'none',
+                background: 'transparent',
+                zIndex: 3,
+              }}
+              className="dual-range-slider"
+            />
+          </div>
+
+          {/* Second Slider - End Year */}
+          <div style={{ position: 'relative', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Visual Range Bar Background */}
+            <div style={{
+              position: 'absolute',
+              left: '0',
+              right: '0',
+              top: '50%',
+              marginTop: '-4px',
+              height: '8px',
+              background: 'rgba(255,255,255,0.1)',
+              borderRadius: '4px',
+              zIndex: 1
+            }}></div>
+
+            {/* Active Range Bar for end */}
+            <div style={{
+              position: 'absolute',
+              left: `${startPercent}%`,
+              width: `${endPercent - startPercent}%`,
+              top: '50%',
+              marginTop: '-4px',
+              height: '8px',
+              background: 'var(--color-principal)',
+              borderRadius: '4px',
+              zIndex: 2,
+              boxShadow: '0 0 10px var(--color-principal)'
+            }}></div>
+
+            {/* End Year Slider */}
+            <input
+              type="range"
+              min={MIN_YEAR}
+              max={MAX_YEAR}
+              value={endYear}
+              onChange={handleEndChange}
+              style={{
+                position: 'absolute',
+                width: '100%',
+                appearance: 'none',
+                background: 'transparent',
+                zIndex: 4,
+              }}
+              className="dual-range-slider"
+            />
+          </div>
         </div>
 
         {/* Labels below */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'clamp(1rem, 2vw, 2rem)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'clamp(1rem, 2vw, 2rem)', marginTop: 'clamp(1rem, 2vw, 1.5rem)' }}>
           <div className="year-display" style={{ textAlign: 'center' }}>
             <span style={{ fontSize: 'clamp(0.75rem, 2vw, 0.9rem)', opacity: 0.7 }}>DESDE</span>
             <div style={{ fontSize: 'clamp(1.6rem, 4vw, 2.5rem)', fontFamily: 'var(--font-title)', color: 'var(--color-principal)' }}>{startYear}</div>

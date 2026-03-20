@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from '../components/Header';
-import { Loader, Music } from 'lucide-react';
+import { Loader } from 'lucide-react';
 
 interface LoadingScreenProps {
   onBack?: () => void;
@@ -9,9 +9,21 @@ interface LoadingScreenProps {
 
 export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) {
   const [fakeProgress, setFakeProgress] = useState(0);
+  const [realProgressReceived, setRealProgressReceived] = useState(false);
 
   useEffect(() => {
-    if (progress) return; // Don't use fake progress if real progress is provided
+    // Si recibimos progreso real con total > 1, lo usamos
+    // Si total === 1, significa que no hay progreso detallado, usamos fake progress
+    if (progress && progress.total > 1) {
+      setRealProgressReceived(true);
+    } else {
+      setRealProgressReceived(false);
+    }
+  }, [progress]);
+
+  useEffect(() => {
+    // Usar fake progress si no tenemos progreso real detallado
+    if (realProgressReceived) return;
 
     const interval = setInterval(() => {
       setFakeProgress(prev => {
@@ -23,9 +35,9 @@ export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) 
     }, 200);
 
     return () => clearInterval(interval);
-  }, [progress]);
+  }, [realProgressReceived]);
 
-  const percentage = progress && progress.total > 0
+  const percentage = realProgressReceived && progress && progress.total > 1
     ? Math.min(Math.round((progress.loaded / progress.total) * 100), 100)
     : Math.min(Math.round(fakeProgress), 100);
 
@@ -36,12 +48,12 @@ export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) 
       <div className="card" style={{ alignItems: 'center', textAlign: 'center', padding: '3rem 2rem' }}>
         <div style={{ position: 'relative', marginBottom: '2rem' }}>
           <Loader 
-            size={64} 
+            size={125} 
             color="var(--color-principal)" 
             style={{ animation: 'spin 1.5s linear infinite' }} 
           />
           <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-            <Music size={24} color="rgba(255,255,255,0.5)" />
+            <img src="/Logo/Logo-2.svg" alt="Logo" style={{ width: '45px', height: '45px' }} />
           </div>
         </div>
 
@@ -66,7 +78,7 @@ export default function LoadingScreen({ onBack, progress }: LoadingScreenProps) 
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.7 }}>
             <span>{percentage}%</span>
-            {progress && progress.total > 0 && (
+            {realProgressReceived && progress && progress.total > 1 && (
               <span>{progress.loaded} / {progress.total} canciones</span>
             )}
           </div>

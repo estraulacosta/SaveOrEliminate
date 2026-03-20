@@ -2,6 +2,8 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import * as path from 'path';
+import * as fs from 'fs';
 import * as gameManager from './gameManager.js';
 import type { GameConfig } from './types.js';
 import * as deezer from './deezer.js';
@@ -9,54 +11,84 @@ import * as deezer from './deezer.js';
 const app = express();
 const httpServer = createServer(app);
 
-const io = new Server(httpServer, {
-  cors: {
-    origin: (origin, callback) => {
-      const allowedOrigins = [
-        'https://save-or-eliminate.vercel.app',
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://localhost:5174',
-      ];
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    methods: ['GET', 'POST'],
-    credentials: true,
+// Serve static files from client build (relative to current working directory)
+const clientBuildPath = path.join(process.cwd(), 'client', 'dist');
+
+// Log startup info
+console.log('=== Server Starting ===');
+console.log('CWD:', process.cwd());
+console.log('Client Build Path:', clientBuildPath);
+console.log('Client Build exists:', fs.existsSync(clientBuildPath));
+console.log('Index.html exists:', fs.existsSync(path.join(clientBuildPath, 'index.html')));
+
+// CORS configuration for Railway and development
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    const allowedOrigins = [
+      'https://save-or-eliminate.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://192.168.1.50:5173',
+      'http://192.168.1.50:3001',
+    ];
+    
+    // In production (Railway), allow the same origin
+    if (process.env.NODE_ENV === 'production') {
+      callback(null, true);
+    } else if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
   },
+  methods: ['GET', 'POST'],
+  credentials: true,
+};
+
+const io = new Server(httpServer, {
+  cors: corsOptions,
   transports: ['websocket', 'polling'],
 });
 
-app.use(cors({
-  origin: [
-    'https://save-or-eliminate.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:5174',
-  ],
-  credentials: true,
-}));
+app.use(cors(corsOptions));
 app.use(express.json());
+app.use(express.static(clientBuildPath));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// SPA fallback: serve index.html for non-API routes
+app.get('*', (req, res) => {
+  const indexPath = path.join(clientBuildPath, 'index.html');
+  
+  // Check if index.html exists
+  if (!fs.existsSync(indexPath)) {
+    console.error('[SPA] index.html not found at:', indexPath);
+    return res.status(404).send('Client build not found. Please ensure client/dist/index.html exists.');
+  }
+  
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[SPA] Error serving index.html:', err.message);
+      res.status(500).send('Error loading page');
+    }
+  });
+});
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('create-room', ({ playerName }) => {
-    const room = gameManager.createRoom(playerName, socket.id);
+  socket.on('create-room', ({ playerName, playerAvatar }) => {
+    const room = gameManager.createRoom(playerName, socket.id, playerAvatar);
     socket.join(room.id);
     socket.emit('room-created', room);
     console.log(`Room created: ${room.id} by ${playerName}`);
   });
 
-  socket.on('join-room', ({ roomId, playerName }) => {
-    const room = gameManager.joinRoom(roomId, playerName, socket.id);
+  socket.on('join-room', ({ roomId, playerName, playerAvatar }) => {
+    const room = gameManager.joinRoom(roomId, playerName, socket.id, playerAvatar);
     if (room) {
       socket.join(roomId);
       socket.emit('room-joined', room);
@@ -68,13 +100,16 @@ io.on('connection', (socket) => {
   });
 
   socket.on('start-game', async ({ roomId, config }: { roomId: string; config: GameConfig }) => {
-    console.log('Starting game in room:', roomId, 'with config:', config);
+    console.log('=== START-GAME EVENT ===');
+    console.log('RoomId:', roomId);
+    console.log('Config received:', JSON.stringify(config, null, 2));
 
     // Emitir evento de carga inicial
-    io.to(roomId).emit('game-loading', { loadedYears: 0, totalYears: config.selectionType === 'year' && config.yearRange
-      ? config.yearRange.end - config.yearRange.start + 1
-      : 0
-    });
+    let totalYears = 1; // Por defecto 1 para otros modos (genre, artist, etc)
+    if (config.selectionType === 'year' && config.yearRange) {
+      totalYears = config.yearRange.end - config.yearRange.start + 1;
+    }
+    io.to(roomId).emit('game-loading', { loadedYears: 0, totalYears });
 
     const success = await gameManager.startGame(roomId, config, (loadedYears, totalYears) => {
       // Emitir progreso de carga año a año
@@ -82,6 +117,7 @@ io.on('connection', (socket) => {
     });
 
     if (success) {
+      console.log('[start-game] StartGame returned success, generating first round...');
       const round = await gameManager.generateRound(roomId);
       if (round) {
         const room = gameManager.getRoom(roomId);
@@ -91,6 +127,7 @@ io.on('connection', (socket) => {
         const currentDecade = config.selectionType === 'decade' && config.decadeRange
           ? config.decadeRange.start
           : null;
+        console.log('[start-game] Emitting game-started with totalRounds:', room?.totalRounds);
         io.to(roomId).emit('game-started', { 
           round, 
           totalRounds: room?.totalRounds,
@@ -105,6 +142,7 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('error', { message: 'Failed to generate first round' });
       }
     } else {
+      console.error('[start-game] StartGame FAILED');
       io.to(roomId).emit('game-error', { message: 'No se pudo iniciar la partida.' });
     }
   });
@@ -113,6 +151,17 @@ io.on('connection', (socket) => {
   socket.on('start-timer', ({ roomId }) => {
     gameManager.startTimer(roomId);
     io.to(roomId).emit('timer-started');
+  });
+
+  socket.on('start-previews', ({ roomId }) => {
+    console.log(`[start-previews] Host starting previews in room ${roomId}`);
+    io.to(roomId).emit('previews-started');
+  });
+
+  socket.on('start-voting', ({ roomId }) => {
+    console.log(`[start-voting] Host starting voting in room ${roomId}`);
+    gameManager.startTimer(roomId);
+    io.to(roomId).emit('voting-started');
   });
 
   socket.on('toggle-pause', ({ roomId }) => {
@@ -209,7 +258,26 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+const PORT = parseInt(process.env.PORT || '3001', 10);
+
+// Error handling for uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('=== UNCAUGHT EXCEPTION ===');
+  console.error(err);
+  process.exit(1);
+});
+
+// Error handling for unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('=== UNHANDLED REJECTION ===');
+  console.error('Promise:', promise);
+  console.error('Reason:', reason);
+});
+
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log('=== Server Started Successfully ===');
+  console.log(`Port: ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`URL: http://0.0.0.0:${PORT}`);
+  console.log(`Client Build: ${clientBuildPath}`);
 });
