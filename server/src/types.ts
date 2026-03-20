@@ -61,6 +61,8 @@ export interface Room {
   totalRounds: number;
   isGameStarted: boolean;
   createdAt: number;
+  waitingPlayers?: Set<string>; // IDs de jugadores esperando la siguiente ronda
+  disconnectedPlayers?: Map<string, { name: string; avatar: number; isHost: boolean }>;
   // Modo año: pool pre-cargado por año { "1985": Song[], "1986": Song[], ... }
   yearSongPool?: Map<number, Song[]>;
   yearSongLoadPromises?: Map<number, Promise<Song[]>>;

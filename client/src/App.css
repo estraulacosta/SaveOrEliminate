@@ -1029,6 +1029,27 @@ header {
   border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
+/* Volume Slider Thumb - Reduced 25% */
+.volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-principal);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-principal);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 /* Song info sizing for mobile */
 .vote-card-song-info {
   font-size: 0.75;

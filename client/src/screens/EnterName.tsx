@@ -3,11 +3,12 @@ import Header from '../components/Header';
 import { Edit2 } from 'lucide-react';
 
 interface EnterNameProps {
-  onSubmit: (name: string, avatar: number) => void;
+  onSubmit: (name: string, avatar: number, isReconnect?: boolean) => void;
   onBack?: () => void;
+  isReconnect?: boolean;
 }
 
-export default function EnterName({ onSubmit, onBack }: EnterNameProps) {
+export default function EnterName({ onSubmit, onBack, isReconnect = false }: EnterNameProps) {
   const [name, setName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState<number>(1);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
@@ -30,7 +31,7 @@ export default function EnterName({ onSubmit, onBack }: EnterNameProps) {
     <>
       <Header onBack={onBack} showBackButton={!!onBack} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, width: '100%', padding: '20px' }}>
-        <h1>¿Cuál es tu nombre?</h1>
+        <h1>{isReconnect ? '¿Vuelves a la partida?' : '¿Cuál es tu nombre?'}</h1>
         <div style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
           
           {/* Avatar Preview with Change Button */}
@@ -219,10 +220,10 @@ export default function EnterName({ onSubmit, onBack }: EnterNameProps) {
           <button
             type="button"
             className="primary"
-            onClick={() => onSubmit(name, selectedAvatar)}
+            onClick={() => onSubmit(name, selectedAvatar, isReconnect)}
             disabled={name.trim().length === 0}
           >
-            Continuar
+            {isReconnect ? 'Reconectar' : 'Continuar'}
           </button>
 
           <style>{`

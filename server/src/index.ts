@@ -5,8 +5,25 @@ import cors from 'cors';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as gameManager from './gameManager.js';
-import type { GameConfig } from './types.js';
+import type { GameConfig, Room } from './types.js';
 import * as deezer from './deezer.js';
+
+// Función para serializar Room (remover Maps y Sets que no se pueden enviar por socket.io)
+function serializeRoom(room: Room): any {
+  return {
+    id: room.id,
+    players: room.players,
+    gameConfig: room.gameConfig,
+    currentRound: room.currentRound,
+    allSongs: room.allSongs,
+    usedSongIds: Array.from(room.usedSongIds || []),
+    totalRounds: room.totalRounds,
+    isGameStarted: room.isGameStarted,
+    createdAt: room.createdAt,
+    disconnectedPlayers: room.disconnectedPlayers ? Array.from(room.disconnectedPlayers.entries()) : [],
+    waitingPlayers: room.waitingPlayers ? Array.from(room.waitingPlayers) : [],
+  };
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -31,6 +48,10 @@ const corsOptions = {
       'http://localhost:5174',
       'http://192.168.1.50:5173',
       'http://192.168.1.50:3001',
+      'http://192.168.0.15:5173',
+      'http://192.168.0.15:3001',
+      'http://26.255.231.234:5173',
+      'http://26.255.231.234:3001',
     ];
     
     // In production (Railway), allow the same origin
@@ -83,16 +104,79 @@ io.on('connection', (socket) => {
   socket.on('create-room', ({ playerName, playerAvatar }) => {
     const room = gameManager.createRoom(playerName, socket.id, playerAvatar);
     socket.join(room.id);
-    socket.emit('room-created', room);
+    socket.emit('room-created', serializeRoom(room));
     console.log(`Room created: ${room.id} by ${playerName}`);
   });
 
   socket.on('join-room', ({ roomId, playerName, playerAvatar }) => {
-    const room = gameManager.joinRoom(roomId, playerName, socket.id, playerAvatar);
-    if (room) {
+    const room = gameManager.getRoom(roomId);
+    if (!room) {
+      socket.emit('error', { message: 'La sala no fue encontrada' });
+      return;
+    }
+    
+    // Si la partida está EN JUEGO, permitir que se "reúna" si estaba desconectado
+    if (room.isGameStarted) {
+      // Primero buscar por nombre exacto
+      let disconnectedPlayerId: string | null = null;
+      
+      for (const [id, data] of room.disconnectedPlayers?.entries() || []) {
+        if (data.name === playerName) {
+          disconnectedPlayerId = id;
+          break;
+        }
+      }
+      
+      // Si no encuentra por nombre exacto pero hay desconectados, tomar el primero disponible
+      // Esto permite que se reconecte con un nombre diferente
+      if (!disconnectedPlayerId && room.disconnectedPlayers && room.disconnectedPlayers.size > 0) {
+        const firstKey = room.disconnectedPlayers.keys().next().value || null;
+        if (firstKey) {
+          disconnectedPlayerId = firstKey;
+          console.log(`[join-room] Reconnecting ${playerName} with different name, using first disconnected player`);
+        }
+      }
+      
+      if (disconnectedPlayerId) {
+        // Es una reconexión válida (mismo nombre o con nombre diferente)
+        const disconnectedData = room.disconnectedPlayers?.get(disconnectedPlayerId);
+        if (disconnectedData) {
+          room.disconnectedPlayers?.delete(disconnectedPlayerId);
+          room.players.push({
+            id: socket.id,
+            name: playerName, // Usar el nombre nuevo del jugador
+            isHost: disconnectedData.isHost,
+            avatar: playerAvatar
+          });
+          
+          // Si hay una ronda activa, marcar jugador como en espera
+          if (room.currentRound) {
+            gameManager.addWaitingPlayer(roomId, socket.id);
+            console.log(`${playerName} reconnected but has round active - marked as waiting`);
+          }
+          
+          socket.join(roomId);
+          socket.emit('room-rejoined', serializeRoom(room));
+          io.to(roomId).emit('player-reconnected', {
+            room: serializeRoom(room),
+            message: `${playerName} se ha reconectado`
+          });
+          console.log(`${playerName} reconnected to active game in room ${roomId}`);
+          return;
+        }
+      }
+      
+      // No hay desconectados para reconectar
+      socket.emit('error', { message: 'Hay una partida en curso. ¿Deseas reconectarte?', canReconnect: true });
+      return;
+    }
+    
+    // Partida no activa: unirse normalmente
+    const joinedRoom = gameManager.joinRoom(roomId, playerName, socket.id, playerAvatar);
+    if (joinedRoom) {
       socket.join(roomId);
-      socket.emit('room-joined', room);
-      io.to(roomId).emit('player-joined', room);
+      socket.emit('room-joined', serializeRoom(joinedRoom));
+      io.to(roomId).emit('player-joined', serializeRoom(joinedRoom));
       console.log(`${playerName} joined room ${roomId}`);
     } else {
       socket.emit('error', { message: 'La sala no fue encontrada o está llena' });
@@ -171,19 +255,26 @@ io.on('connection', (socket) => {
   });
 
   socket.on('submit-vote', ({ roomId, songId }) => {
-    gameManager.submitVote(roomId, socket.id, songId);
+    const success = gameManager.submitVote(roomId, socket.id, songId);
     const room = gameManager.getRoom(roomId);
     if (room?.currentRound) {
       io.to(roomId).emit('vote-submitted', {
         votes: room.currentRound.votes,
         players: room.players,
+        waitingPlayers: room.waitingPlayers ? Array.from(room.waitingPlayers) : [],
+        isWaitingPlayer: room.waitingPlayers?.has(socket.id) || false,
       });
+    } else if (!success) {
+      socket.emit('error', { message: 'No puedes votar - espera a la siguiente ronda' });
     }
   });
 
   socket.on('next-round', async ({ roomId }) => {
     const round = await gameManager.generateRound(roomId);
     const room = gameManager.getRoom(roomId);
+    
+    // Limpiar la lista de jugadores esperando para la nueva ronda
+    gameManager.clearWaitingPlayers(roomId);
     
     if (round) {
       const currentYear = room?.gameConfig?.selectionType === 'year' && room.gameConfig.yearRange
@@ -215,7 +306,9 @@ io.on('connection', (socket) => {
   socket.on('reset-game', ({ roomId }) => {
     gameManager.resetGame(roomId);
     const room = gameManager.getRoom(roomId);
-    io.to(roomId).emit('game-reset', room);
+    if (room) {
+      io.to(roomId).emit('game-reset', serializeRoom(room));
+    }
   });
 
   socket.on('get-top-artists', async (callback) => {
@@ -238,23 +331,141 @@ io.on('connection', (socket) => {
     callback(genres);
   });
 
+  socket.on('leave-room', ({ roomId }) => {
+    console.log(`Player ${socket.id} is leaving room ${roomId}`);
+    const room = gameManager.getRoom(roomId);
+    
+    if (room) {
+      const player = room.players.find((p: any) => p.id === socket.id);
+      if (player) {
+        const playerName = player.name;
+        const wasHost = player.isHost;
+        
+        // Remover jugador
+        gameManager.removePlayer(roomId, socket.id);
+        socket.leave(roomId);
+        
+        // Obtener sala actualizada
+        const updatedRoom = gameManager.getRoom(roomId);
+        
+        if (updatedRoom && updatedRoom.players.length > 0) {
+          // Si el que se fue era host, notificar nuevo host
+          if (wasHost) {
+            console.log(`Host left room ${roomId}. New host: ${updatedRoom.players[0].name}`);
+          }
+          
+          // Notificar a los jugadores restantes
+          io.to(roomId).emit('player-left', {
+            room: serializeRoom(updatedRoom),
+            message: `${playerName} se ha salido de la partida`
+          });
+        } else {
+          console.log(`Room ${roomId} deleted (no players left)`);
+        }
+      }
+    }
+  });
+
+  socket.on('transfer-host', ({ roomId, newHostId }) => {
+    console.log(`Transferring host in room ${roomId} to player ${newHostId}`);
+    
+    const updatedRoom = gameManager.transferHost(roomId, newHostId);
+    if (updatedRoom) {
+      const newHostName = updatedRoom.players.find((p: any) => p.id === newHostId)?.name;
+      io.to(roomId).emit('host-transferred', {
+        room: serializeRoom(updatedRoom),
+        message: `${newHostName} es el nuevo anfitrión`
+      });
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     
-    const result = gameManager.findAndRemovePlayerFromAllRooms(socket.id);
+    const result = gameManager.findAndMarkPlayerDisconnected(socket.id);
     if (result) {
       const { roomId, room, playerName } = result;
       
-      if (room.players.length > 0) {
-        // Notificar a los otros jugadores
+      if (room.isGameStarted) {
+        // Partida activa: notificar que se desconectó pero puede reconectarse
+        io.to(roomId).emit('player-disconnected', {
+          room: serializeRoom(room),
+          message: `${playerName} se ha desconectado`,
+          canReconnect: true
+        });
+        console.log(`Player ${playerName} disconnected from active game in room ${roomId}`);
+      } else if (room.players.length > 0) {
+        // Sin partida: notificar salida
         io.to(roomId).emit('player-left', {
-          room: room,
+          room: serializeRoom(room),
           message: `${playerName} se ha desconectado`
         });
       } else {
         console.log(`Room ${roomId} deleted (no players left)`);
       }
     }
+  });
+
+  socket.on('reconnect-room', ({ roomId, playerId, playerName, playerAvatar }) => {
+    console.log(`Player ${playerName} (old ID: ${playerId}) attempting to reconnect to room ${roomId}`);
+    
+    const room = gameManager.getRoom(roomId);
+    if (!room) {
+      socket.emit('error', { message: 'La sala no existe' });
+      return;
+    }
+    
+    // Buscar al jugador desconectado por ID (si tiene el mismo ID de socket)
+    let wasDisconnected = room.disconnectedPlayers?.has(playerId);
+    let disconnectedPlayerId = playerId;
+    
+    // Si no encuentra por ID, buscar por nombre (para reconexiones después de refresh)
+    if (!wasDisconnected) {
+      for (const [id, data] of room.disconnectedPlayers?.entries() || []) {
+        if (data.name === playerName) {
+          disconnectedPlayerId = id;
+          wasDisconnected = true;
+          break;
+        }
+      }
+    }
+    
+    if (!wasDisconnected) {
+      socket.emit('error', { message: 'No hay reconexión disponible para este jugador' });
+      return;
+    }
+    
+    // Remover del mapa de desconectados y agregar de vuelta con el nuevo socket ID
+    const disconnectedData = room.disconnectedPlayers?.get(disconnectedPlayerId);
+    if (!disconnectedData) {
+      socket.emit('error', { message: 'Error al restaurar el jugador' });
+      return;
+    }
+    
+    room.disconnectedPlayers?.delete(disconnectedPlayerId);
+    room.players.push({
+      id: socket.id,
+      name: playerName,
+      isHost: disconnectedData.isHost,
+      avatar: playerAvatar
+    });
+    
+    const updatedRoom = gameManager.getRoom(roomId);
+    if (!updatedRoom) {
+      socket.emit('error', { message: 'Error al reconectar al jugador' });
+      return;
+    }
+    
+    socket.join(roomId);
+    socket.emit('room-rejoined', serializeRoom(updatedRoom));
+    
+    // Notificar a los otros jugadores
+    io.to(roomId).emit('player-reconnected', {
+      room: serializeRoom(updatedRoom),
+      message: `${playerName} se ha reconectado`
+    });
+    
+    console.log(`${playerName} successfully reconnected to room ${roomId} with new socket ID`);
   });
 });
 

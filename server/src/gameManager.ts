@@ -67,6 +67,8 @@ export function createRoom(playerName: string, playerId: string, playerAvatar: n
     totalRounds: 0,
     isGameStarted: false,
     createdAt: Date.now(),
+    waitingPlayers: new Set(),
+    disconnectedPlayers: new Map(),
     artistRoundHistory: new Map(),
     roundArtists: new Map(),
   };
@@ -121,12 +123,122 @@ export function removePlayer(roomId: string, playerId: string): boolean {
   return true;
 }
 
-export function findAndRemovePlayerFromAllRooms(playerId: string): { roomId: string; room: Room; playerName: string } | null {
+export function transferHost(roomId: string, newHostPlayerId: string): Room | null {
+  const room = rooms.get(roomId);
+  if (!room) return null;
+  
+  // Encontrar el nuevo host
+  const newHost = room.players.find((p: Player) => p.id === newHostPlayerId);
+  if (!newHost) return null;
+  
+  // Remover host anterior de jugadores activos
+  room.players.forEach((p: Player) => {
+    if (p.isHost) {
+      p.isHost = false;
+    }
+  });
+  
+  // Buscar y actualizar host anterior en desconectados
+  if (room.disconnectedPlayers) {
+    for (const [id, disconnectedData] of room.disconnectedPlayers.entries()) {
+      if (disconnectedData.isHost) {
+        disconnectedData.isHost = false;
+        console.log(`[transferHost] Updated disconnected player ${id} to isHost: false`);
+      }
+    }
+  }
+  
+  // Asignar nuevo host
+  newHost.isHost = true;
+  
+  return room;
+}
+
+export function markPlayerDisconnected(roomId: string, playerId: string): Room | null {
+  const room = rooms.get(roomId);
+  if (!room) return null;
+  
+  const player = room.players.find((p: Player) => p.id === playerId);
+  if (!player) return null;
+  
+  // Si la partida está activa, marcar como desconectado en lugar de remover
+  if (room.isGameStarted) {
+    if (!room.disconnectedPlayers) {
+      room.disconnectedPlayers = new Map();
+    }
+    room.disconnectedPlayers.set(playerId, {
+      name: player.name,
+      avatar: player.avatar,
+      isHost: player.isHost
+    });
+    
+    console.log(`Marked player ${player.name} (${playerId}) as disconnected from room ${roomId}`);
+    
+    // Remover de los jugadores activos
+    room.players = room.players.filter((p: Player) => p.id !== playerId);
+    
+    // Si el que se desconectó era host, asignar a otro
+    if (!room.players.some((p: Player) => p.isHost) && room.players.length > 0) {
+      room.players[0].isHost = true;
+      // Limpiar el flag de host de todos los desconectados
+      if (room.disconnectedPlayers) {
+        for (const [id, disconnectedData] of room.disconnectedPlayers.entries()) {
+          if (disconnectedData.isHost) {
+            disconnectedData.isHost = false;
+            console.log(`[markPlayerDisconnected] Cleared isHost from disconnected player ${id}`);
+          }
+        }
+      }
+      console.log(`New host assigned: ${room.players[0].name}`);
+    }
+    
+    return room;
+  } else {
+    // Si no ha empezado, remover normalmente
+    removePlayer(roomId, playerId);
+    return room;
+  }
+}
+
+export function reconnectPlayer(roomId: string, playerId: string): Room | null {
+  const room = rooms.get(roomId);
+  if (!room) return null;
+  
+  const disconnectedData = room.disconnectedPlayers?.get(playerId);
+  if (!disconnectedData) return null;
+  
+  // Agregar de nuevo a la lista de jugadores
+  room.players.push({
+    id: playerId,
+    name: disconnectedData.name,
+    isHost: disconnectedData.isHost,
+    avatar: disconnectedData.avatar
+  });
+  
+  // Remover de desconectados
+  room.disconnectedPlayers?.delete(playerId);
+  
+  return room;
+}
+
+export function findAndMarkPlayerDisconnected(playerId: string): { roomId: string; room: Room; playerName: string } | null {
   for (const [roomId, room] of rooms.entries()) {
     const player = room.players.find((p: Player) => p.id === playerId);
     if (player) {
-      removePlayer(roomId, playerId);
-      return { roomId, room, playerName: player.name };
+      const playerName = player.name;
+      
+      if (room.isGameStarted) {
+        // Marcar como desconectado si hay partida activa
+        const updatedRoom = markPlayerDisconnected(roomId, playerId);
+        if (updatedRoom) {
+          return { roomId, room: updatedRoom, playerName };
+        }
+      } else {
+        // Remover si no hay partida
+        removePlayer(roomId, playerId);
+        const updatedRoom = getRoom(roomId);
+        return { roomId, room: updatedRoom || room, playerName };
+      }
     }
   }
   return null;
@@ -658,152 +770,196 @@ export async function generateRound(roomId: string): Promise<Round | null> {
     return null;
   }
   
-  const { songsPerRound, selectionType, yearRange, decadeRange, versusConfig } = room.gameConfig;
-  const roundNumber = room.currentRound ? room.currentRound.roundNumber + 1 : 1;
-  
-  // Verificar si ya alcanzamos el total de rondas
-  if (roundNumber > room.totalRounds) {
-    console.log(`[GenerateRound] Game ended. Round ${roundNumber} exceeds total rounds ${room.totalRounds}`);
+  try {
+    const { songsPerRound, selectionType, yearRange, decadeRange, versusConfig } = room.gameConfig;
+    const roundNumber = room.currentRound ? room.currentRound.roundNumber + 1 : 1;
+    
+    // Verificar si ya alcanzamos el total de rondas
+    if (roundNumber > room.totalRounds) {
+      console.log(`[GenerateRound] Game ended. Round ${roundNumber} exceeds total rounds ${room.totalRounds}`);
+      return null;
+    }
+    
+    console.log(`[GenerateRound] Generating round ${roundNumber}/${room.totalRounds} for mode ${selectionType}`);
+    
+    let selectedSongs: Song[] = [];
+    
+    // Para VERSUS mode: 1 canción de cada artista
+    if (selectionType === 'versus' && versusConfig && room.versusSongsOption1 && room.versusSongsOption2) {
+      const songsOption1 = room.versusSongsOption1.filter((song, idx) => !room.versusUsedIndices1?.has(idx));
+      const songsOption2 = room.versusSongsOption2.filter((song, idx) => !room.versusUsedIndices2?.has(idx));
+
+      if (songsOption1.length === 0 || songsOption2.length === 0) {
+        console.log(`[Versus] Not enough songs: ${songsOption1.length} from option1, ${songsOption2.length} from option2`);
+        return null;
+      }
+
+      // Seleccionar una canción al azar de cada artista
+      const song1 = songsOption1[Math.floor(Math.random() * songsOption1.length)];
+      const song2 = songsOption2[Math.floor(Math.random() * songsOption2.length)];
+
+      // Marcar como usadas
+      const idx1 = room.versusSongsOption1.indexOf(song1);
+      const idx2 = room.versusSongsOption2.indexOf(song2);
+      room.versusUsedIndices1?.add(idx1);
+      room.versusUsedIndices2?.add(idx2);
+
+      // Shuffle para que no siempre salga primero el artista 1
+      selectedSongs = [song1, song2].sort(() => Math.random() - 0.5);
+      console.log(`[Versus Round ${roundNumber}] Selected songs: ${song1.artist} - ${song1.name} and ${song2.artist} - ${song2.name}`);
+    }
+    // Para year mode, obtener SOLO las canciones del año actual de esa ronda
+    else if (selectionType === 'year' && yearRange) {
+      const currentYear = yearRange.start + (roundNumber - 1);
+      if (currentYear > yearRange.end) {
+        console.log(`End of year range. Current year ${currentYear} exceeds end ${yearRange.end}`);
+        return null; // Ya pasamos el rango de años
+      }
+      console.log(`[Ronda ${roundNumber}] Fetching songs for year ${currentYear}...`);
+      const availableSongs = await deezer.searchByYear(currentYear, 100);
+      console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for year ${currentYear}`);
+      
+      if (availableSongs.length < songsPerRound) {
+        console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
+        return null;
+      }
+      
+      const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
+      selectedSongs = shuffled.slice(0, songsPerRound);
+    } 
+    // Para decade mode, obtener SOLO las canciones de la década actual de esa ronda
+    else if (selectionType === 'decade' && decadeRange) {
+      const currentDecade = decadeRange.start + (roundNumber - 1) * 10;
+      if (currentDecade > decadeRange.end) {
+        console.log(`End of decade range. Current decade ${currentDecade} exceeds end ${decadeRange.end}`);
+        return null; // Ya pasamos el rango de décadas
+      }
+      console.log(`[Ronda ${roundNumber}] Fetching songs for decade ${currentDecade}s...`);
+      const availableSongs = await deezer.searchByDecade(currentDecade, currentDecade + 9, 100);
+      console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for decade ${currentDecade}s`);
+      
+      if (availableSongs.length < songsPerRound) {
+        console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
+        return null;
+      }
+      
+      const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
+      selectedSongs = shuffled.slice(0, songsPerRound);
+    }
+    else {
+      // Para otros modos (genre, artist, etc.), usar las canciones pre-cargadas
+      const availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
+      
+      if (availableSongs.length < songsPerRound) {
+        console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
+        return null;
+      }
+
+      // MODE ESPECÍFICO: ARTIST
+      // En modo artista, NO usar artist distancing. Solo seleccionar canciones del pool.
+      if (selectionType === 'artist') {
+        console.log(`[SelectSongs] ARTIST MODE: Selecting ${songsPerRound} songs from ${availableSongs.length} available`);
+        const shuffled = availableSongs.sort(() => Math.random() - 0.5);
+        selectedSongs = shuffled.slice(0, songsPerRound);
+      } else {
+        // MODE ESPECÍFICO: GENRE o VERSUS
+        // Con múltiples artistas, usar artist distancing
+        const totalSongsNeeded = room.totalRounds * songsPerRound;
+        const estimatedArtists = 40;
+        
+        let dynamicMinDistance = Math.max(
+          0,
+          Math.floor((estimatedArtists / songsPerRound) - (room.totalRounds / 5))
+        );
+        
+        console.log(
+          `[DistanceCalc] GENRE/VERSUS MODE - Total songs needed: ${totalSongsNeeded}, ` +
+          `Estimated artists: ${estimatedArtists}, ` +
+          `Songs per round: ${songsPerRound}, ` +
+          `Calculated minDistance: ${dynamicMinDistance}`
+        );
+        
+        selectedSongs = selectSongsWithArtistDistancing(
+          availableSongs,
+          songsPerRound,
+          roundNumber,
+          room,
+          dynamicMinDistance
+        );
+      }
+      
+      // Marcar como usadas
+      selectedSongs.forEach(song => room.usedSongIds.add(song.id));
+    }
+    
+    const round: Round = {
+      roundNumber,
+      songs: selectedSongs,
+      votes: [],
+      isPaused: false,
+      timerStarted: false,
+    };
+    
+    room.currentRound = round;
+    console.log(`Created round ${roundNumber} with ${selectedSongs.length} songs`);
+    return round;
+  } catch (error) {
+    console.error(`[GenerateRound] ERROR:`, error);
     return null;
   }
-  
-  console.log(`[GenerateRound] Generating round ${roundNumber}/${room.totalRounds} for mode ${selectionType}`);
-  
-  let selectedSongs: Song[] = [];
-  
-  
-  // Para VERSUS mode: 1 canción de cada artista
-  if (selectionType === 'versus' && versusConfig && room.versusSongsOption1 && room.versusSongsOption2) {
-    const songsOption1 = room.versusSongsOption1.filter((song, idx) => !room.versusUsedIndices1?.has(idx));
-    const songsOption2 = room.versusSongsOption2.filter((song, idx) => !room.versusUsedIndices2?.has(idx));
+}
 
-    if (songsOption1.length === 0 || songsOption2.length === 0) {
-      console.log(`[Versus] Not enough songs: ${songsOption1.length} from option1, ${songsOption2.length} from option2`);
-      return null;
-    }
+/**
+ * Agrega un jugador a la lista de espera para la siguiente ronda
+ * Se usa cuando un jugador se conecta de nuevo durante una ronda activa
+ */
+export function addWaitingPlayer(roomId: string, playerId: string): Room | null {
+  const room = rooms.get(roomId);
+  if (!room) return null;
 
-    // Seleccionar una canción al azar de cada artista
-    const song1 = songsOption1[Math.floor(Math.random() * songsOption1.length)];
-    const song2 = songsOption2[Math.floor(Math.random() * songsOption2.length)];
-
-    // Marcar como usadas
-    const idx1 = room.versusSongsOption1.indexOf(song1);
-    const idx2 = room.versusSongsOption2.indexOf(song2);
-    room.versusUsedIndices1?.add(idx1);
-    room.versusUsedIndices2?.add(idx2);
-
-    // Shuffle para que no siempre salga primero el artista 1
-    selectedSongs = [song1, song2].sort(() => Math.random() - 0.5);
-    console.log(`[Versus Round ${roundNumber}] Selected songs: ${song1.artist} - ${song1.name} and ${song2.artist} - ${song2.name}`);
+  if (!room.waitingPlayers) {
+    room.waitingPlayers = new Set();
   }
-  // Para year mode, obtener SOLO las canciones del año actual de esa ronda
-  else if (selectionType === 'year' && yearRange) {
-    const currentYear = yearRange.start + (roundNumber - 1);
-    if (currentYear > yearRange.end) {
-      console.log(`End of year range. Current year ${currentYear} exceeds end ${yearRange.end}`);
-      return null; // Ya pasamos el rango de años
-    }
-    console.log(`[Ronda ${roundNumber}] Fetching songs for year ${currentYear}...`);
-    const availableSongs = await deezer.searchByYear(currentYear, 100);
-    console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for year ${currentYear}`);
-    
-    if (availableSongs.length < songsPerRound) {
-      console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
-      return null;
-    }
-    
-    const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
-    selectedSongs = shuffled.slice(0, songsPerRound);
-  } 
-  // Para decade mode, obtener SOLO las canciones de la década actual de esa ronda
-  else if (selectionType === 'decade' && decadeRange) {
-    const currentDecade = decadeRange.start + (roundNumber - 1) * 10;
-    if (currentDecade > decadeRange.end) {
-      console.log(`End of decade range. Current decade ${currentDecade} exceeds end ${decadeRange.end}`);
-      return null; // Ya pasamos el rango de décadas
-    }
-    console.log(`[Ronda ${roundNumber}] Fetching songs for decade ${currentDecade}s...`);
-    const availableSongs = await deezer.searchByDecade(currentDecade, currentDecade + 9, 100);
-    console.log(`[Ronda ${roundNumber}] Got ${availableSongs.length} songs for decade ${currentDecade}s`);
-    
-    if (availableSongs.length < songsPerRound) {
-      console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
-      return null;
-    }
-    
-    const shuffled = [...availableSongs].sort(() => Math.random() - 0.5);
-    selectedSongs = shuffled.slice(0, songsPerRound);
-  }
-  else {
-    // Para otros modos (genre, artist, etc.), usar las canciones pre-cargadas
-    const availableSongs = room.allSongs.filter(song => !room.usedSongIds.has(song.id));
-    
-    if (availableSongs.length < songsPerRound) {
-      console.log(`Not enough songs: ${availableSongs.length} < ${songsPerRound}`);
-      return null;
-    }
 
-    // MODE ESPECÍFICO: ARTIST
-    // En modo artista, NO usar artist distancing. Solo seleccionar canciones del pool.
-    if (selectionType === 'artist') {
-      console.log(`[SelectSongs] ARTIST MODE: Selecting ${songsPerRound} songs from ${availableSongs.length} available`);
-      const shuffled = availableSongs.sort(() => Math.random() - 0.5);
-      selectedSongs = shuffled.slice(0, songsPerRound);
-    } else {
-      // MODE ESPECÍFICO: GENRE o VERSUS
-      // Con múltiples artistas, usar artist distancing
-      const totalSongsNeeded = room.totalRounds * songsPerRound;
-      const estimatedArtists = 40;
-      
-      let dynamicMinDistance = Math.max(
-        0,
-        Math.floor((estimatedArtists / songsPerRound) - (room.totalRounds / 5))
-      );
-      
-      console.log(
-        `[DistanceCalc] GENRE/VERSUS MODE - Total songs needed: ${totalSongsNeeded}, ` +
-        `Estimated artists: ${estimatedArtists}, ` +
-        `Songs per round: ${songsPerRound}, ` +
-        `Calculated minDistance: ${dynamicMinDistance}`
-      );
-      
-      selectedSongs = selectSongsWithArtistDistancing(
-        availableSongs,
-        songsPerRound,
-        roundNumber,
-        room,
-        dynamicMinDistance
-      );
-    }
-    
-    // Marcar como usadas
-    selectedSongs.forEach(song => room.usedSongIds.add(song.id));
+  room.waitingPlayers.add(playerId);
+  console.log(`[WaitingPlayers] Player ${playerId} added to waiting list for room ${roomId}`);
+  
+  return room;
+}
+
+/**
+ * Limpia la lista de jugadores esperando cuando comienza una nueva ronda
+ */
+export function clearWaitingPlayers(roomId: string): Room | null {
+  const room = rooms.get(roomId);
+  if (!room) return null;
+
+  if (room.waitingPlayers) {
+    console.log(`[WaitingPlayers] Clearing waiting players for room ${roomId} (count: ${room.waitingPlayers.size})`);
+    room.waitingPlayers.clear();
   }
   
-  // Verificar que TODAS las canciones tienen previewUrl válida antes de enviar al cliente
-  const invalidSongs = selectedSongs.filter(song => !song.previewUrl || song.previewUrl.trim().length === 0);
-  if (invalidSongs.length > 0) {
-    console.error(`[GenerateRound] WARNING: ${invalidSongs.length} songs without valid preview URL:`, invalidSongs.map(s => `"${s.name}" - ${s.artist}`));
-  }
-  
-  console.log(`[GenerateRound] Round ${roundNumber} songs:`, selectedSongs.map((s, i) => `${i+1}. "${s.name}" by ${s.artist} (preview: ${s.previewUrl ? s.previewUrl.substring(0, 50) + '...' : 'NONE'})`));
-  
-  const round: Round = {
-    roundNumber,
-    songs: selectedSongs,
-    votes: [],
-    isPaused: false,
-    timerStarted: false,
-  };
-  
-  room.currentRound = round;
-  console.log(`Created round ${roundNumber} with ${selectedSongs.length} songs`);
-  return round;
+  return room;
+}
+
+/**
+ * Verifica si un jugador está en la lista de espera
+ */
+export function isPlayerWaiting(roomId: string, playerId: string): boolean {
+  const room = rooms.get(roomId);
+  if (!room || !room.waitingPlayers) return false;
+  return room.waitingPlayers.has(playerId);
 }
 
 export function submitVote(roomId: string, playerId: string, songId: string): boolean {
   const room = rooms.get(roomId);
   if (!room || !room.currentRound) return false;
+  
+  // Si el jugador está esperando, no permitir voto
+  if (room.waitingPlayers && room.waitingPlayers.has(playerId)) {
+    console.log(`[submitVote] Player ${playerId} is waiting - vote rejected`);
+    return false;
+  }
   
   room.currentRound.votes = room.currentRound.votes.filter(v => v.playerId !== playerId);
   room.currentRound.votes.push({ playerId, songId });
@@ -844,6 +1000,12 @@ export function resetGame(roomId: string): boolean {
   room.versusSongsOption2 = undefined;
   room.versusUsedIndices1 = undefined;
   room.versusUsedIndices2 = undefined;
+  
+  // Limpiar desconectados y jugadores esperando para nueva partida
+  room.disconnectedPlayers?.clear();
+  room.waitingPlayers?.clear();
+  
+  console.log(`[ResetGame] Game reset for room ${roomId} - cleared disconnected and waiting players`);
   
   return true;
 }

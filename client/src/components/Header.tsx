@@ -51,15 +51,15 @@ export default function Header({ onBack, showBackButton = true, showVolume = tru
     if (newVolume > 0) setIsMuted(false);
   };
 
-  // const _toggleMute = () => {
-  //   if (isMuted) {
-  //     applyVolume(volume);
-  //     setIsMuted(false);
-  //   } else {
-  //     setIsMuted(true);
-  //     applyVolume(0);
-  //   }
-  // };
+  const toggleMute = () => {
+    if (isMuted) {
+      applyVolume(volume);
+      setIsMuted(false);
+    } else {
+      setIsMuted(true);
+      applyVolume(0);
+    }
+  };
 
   return (
     <header className="header-bar">
@@ -84,7 +84,7 @@ export default function Header({ onBack, showBackButton = true, showVolume = tru
               background: 'rgba(30, 25, 33, 0.95)',
               padding: '12px 16px',
               borderRadius: '12px',
-              width: '180px',
+              width: '240px',
               backdropFilter: 'blur(10px)',
               border: '1px solid rgba(255,255,255,0.1)',
               boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
@@ -92,13 +92,33 @@ export default function Header({ onBack, showBackButton = true, showVolume = tru
               alignItems: 'center',
               zIndex: 1000
             }}>
-              <Volume2 size={16} style={{ marginRight: 12, color: 'rgba(255,255,255,0.5)', minWidth: 16 }} />
+              <button
+                type="button"
+                onClick={toggleMute}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12,
+                  minWidth: 2,
+                  width: '30px',
+                  color: isMuted || volume === 0 ? 'rgba(255, 100, 100, 0.8)' : 'rgba(255,255,255,0.5)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+              </button>
               <input
                 type="range"
                 min="0"
                 max="100"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
+                className="volume-slider"
                 style={{ width: '100%', cursor: 'pointer', height: '6px' }}
               />
             </div>
