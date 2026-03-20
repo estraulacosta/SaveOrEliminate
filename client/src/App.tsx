@@ -15,6 +15,7 @@ import GamePlay from './screens/GamePlay';
 import VoteResults from './screens/VoteResults';
 import GameFinished from './screens/GameFinished';
 import LoadingScreen from './screens/LoadingScreen';
+import WaitingForRound from './screens/WaitingForRound';
 
 type Screen = 
   | 'home'
@@ -30,14 +31,17 @@ type Screen =
   | 'loading'
   | 'gameplay'
   | 'vote-results'
-  | 'game-finished';
+  | 'game-finished'
+  | 'waiting-for-round';
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [screenHistory, setScreenHistory] = useState<Screen[]>(['home']);
   const [room, setRoom] = useState<Room | null>(null);
-  const [, setPlayerName] = useState('');
+  const [playerName, setPlayerName] = useState('');
+  const [playerAvatar, setPlayerAvatar] = useState(0);
   const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [gameConfig, setGameConfig] = useState<Partial<GameConfig>>({});
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [totalRounds, setTotalRounds] = useState(0);
@@ -57,6 +61,21 @@ function App() {
       setScreenHistory(newHistory);
       setCurrentScreen(newHistory[newHistory.length - 1]);
     }
+  };
+
+  // Manejar salida del lobby
+  const handleLobbyBack = () => {
+    if (room) {
+      socket.emit('leave-room', { roomId: room.id });
+      setRoom(null);
+      setGameConfig({});
+      setCurrentRound(null);
+      setVotes([]);
+    }
+    
+    // Volver al inicio
+    setCurrentScreen('home');
+    setScreenHistory(['home']);
   };
 
   useEffect(() => {
@@ -79,22 +98,72 @@ function App() {
       console.log(message);
     });
 
+    socket.on('host-transferred', ({ room, message }: { room: Room; message: string }) => {
+      setRoom(room);
+      console.log(message);
+    });
+
+    socket.on('player-disconnected', ({ room, message, canReconnect }: { room: Room; message: string; canReconnect: boolean }) => {
+      setRoom(room);
+      console.log(message, canReconnect ? '(puede reconectarse)' : '');
+    });
+
+    socket.on('player-reconnected', ({ room, message }: { room: Room; message: string }) => {
+      setRoom(room);
+      if (room.gameConfig) {
+        setGameConfig(room.gameConfig);
+      }
+      console.log(message);
+    });
+
+    socket.on('room-rejoined', (updatedRoom: Room & { waitingPlayers?: string[] }) => {
+      console.log('Room rejoined:', updatedRoom);
+      setRoom(updatedRoom);
+      if (updatedRoom.gameConfig) {
+        setGameConfig(updatedRoom.gameConfig);
+        console.log('GameConfig restored:', updatedRoom.gameConfig);
+      }
+      
+      // Obtener la ID del socket actual para verificar si está esperando
+      const currentPlayerId = socket.id || '';
+      const isCurrentPlayerWaiting = (updatedRoom.waitingPlayers?.includes(currentPlayerId)) || false;
+      
+      if (updatedRoom.isGameStarted && updatedRoom.currentRound) {
+        setCurrentRound(updatedRoom.currentRound);
+        setTotalRounds(updatedRoom.totalRounds);
+        
+        // Si el jugador está esperando, mostrar pantalla de espera
+        if (isCurrentPlayerWaiting) {
+          console.log('Player is waiting for next round');
+          setCurrentScreen('waiting-for-round');
+        } else {
+          setCurrentScreen('gameplay');
+          console.log('Restored to gameplay mode, round:', updatedRoom.currentRound.roundNumber);
+        }
+      } else {
+        // Si no hay ronda actual pero el juego empezó, mostrar pantalla de espera
+        console.log('Game started but no current round - showing loading screen');
+        setCurrentScreen('loading');
+      }
+    });
+
     socket.on('game-loading', ({ loadedYears, totalYears }: { loadedYears: number; totalYears: number }) => {
       setLoadingProgress({ loaded: loadedYears, total: totalYears });
       setCurrentScreen('loading');
     });
 
     socket.on('game-started', ({ round, totalRounds: total, currentYear, currentDecade, selectionType, mode }: { round: Round; totalRounds: number; currentYear?: number; currentDecade?: number; selectionType?: string; mode?: string }) => {
+      console.log('Game started event received:', { mode, selectionType, roundNumber: round.roundNumber });
       setCurrentRound(round);
       setTotalRounds(total);
       if (currentYear !== undefined) {
-        setGameConfig(prev => ({ ...prev, currentYear }));
+        setGameConfig(prev => ({ ...prev, currentYear, mode: mode as any }));
       }
       if (currentDecade !== undefined) {
-        setGameConfig(prev => ({ ...prev, currentDecade }));
+        setGameConfig(prev => ({ ...prev, currentDecade, mode: mode as any }));
       }
       if (selectionType !== undefined) {
-        setGameConfig(prev => ({ ...prev, selectionType: selectionType as any }));
+        setGameConfig(prev => ({ ...prev, selectionType: selectionType as any, mode: mode as any }));
       }
       if (mode !== undefined) {
         setGameConfig(prev => ({ ...prev, mode: mode as any }));
@@ -137,6 +206,7 @@ function App() {
         setGameConfig(prev => ({ ...prev, mode: mode as any }));
       }
       setVotes([]);
+      // Siempre mostrar gameplay en nueva ronda (el jugador ya no está esperando)
       setCurrentScreen('gameplay');
     });
 
@@ -153,8 +223,17 @@ function App() {
       setCurrentScreen('lobby');
     });
 
-    socket.on('error', ({ message }: { message: string }) => {
-      setErrorMessage(message);
+    socket.on('error', ({ message, canReconnect }: { message: string; canReconnect?: boolean }) => {
+      if (message === 'Hay una partida en curso. ¿Deseas reconectarte?' && canReconnect && pendingRoomId && playerName) {
+        // Intentar reconectar automáticamente con el nombre guardado
+        console.log('Intentando reconectar con nombre guardado:', playerName);
+        socket.emit('join-room', { roomId: pendingRoomId, playerName, playerAvatar });
+      } else if (message.includes('Hay una partida en curso')) {
+        setErrorMessage('Hay una partida en curso. ¿Deseas reconectarte?');
+        setIsReconnecting(true);
+      } else {
+        setErrorMessage(message);
+      }
     });
 
     return () => {
@@ -162,6 +241,10 @@ function App() {
       socket.off('room-joined');
       socket.off('player-joined');
       socket.off('player-left');
+      socket.off('host-transferred');
+      socket.off('player-disconnected');
+      socket.off('player-reconnected');
+      socket.off('room-rejoined');
       socket.off('game-loading');
       socket.off('game-started');
       socket.off('game-error');
@@ -181,6 +264,8 @@ function App() {
     const roomIdFromUrl = params.get('room');
     if (roomIdFromUrl && roomIdFromUrl.length === 6) {
       setPendingRoomId(roomIdFromUrl);
+      // No asumir reconexión - el servidor lo determinará
+      setIsReconnecting(false);
       setCurrentScreen('enter-name');
       setScreenHistory(['home', 'enter-name']);
     }
@@ -202,8 +287,11 @@ function App() {
 
       case 'enter-name':
         return <EnterName
+          isReconnect={isReconnecting}
           onSubmit={(name, avatar) => {
             setPlayerName(name);
+            setPlayerAvatar(avatar);
+            // Siempre intentar unirse primero
             if (pendingRoomId) {
               socket.emit('join-room', { roomId: pendingRoomId, playerName: name, playerAvatar: avatar });
             } else {
@@ -218,7 +306,7 @@ function App() {
           room={room!}
           isHost={isHost}
           onStartGame={() => navigateTo('game-mode-select')}
-          onBack={goBack}
+          onBack={handleLobbyBack}
         />;
 
       case 'game-mode-select':
@@ -356,6 +444,12 @@ function App() {
           isHost={isHost}
           roomId={room!.id}
           onPlayAgain={() => socket.emit('reset-game', { roomId: room!.id })}
+        />;
+
+      case 'waiting-for-round':
+        return <WaitingForRound
+          roundNumber={currentRound?.roundNumber || 1}
+          totalRounds={totalRounds}
         />;
 
       default:

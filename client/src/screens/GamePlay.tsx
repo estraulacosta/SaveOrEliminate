@@ -190,8 +190,13 @@ export default function GamePlay({ round, totalRounds, roomId, isHost, gameMode,
       });
       setVoteCounts(counts);
 
-      // Si todos los jugadores votaron, terminar la ronda automáticamente
-      if (data.votes.length === data.players.length && votingStarted) {
+      // Calcular número de jugadores activos (excluyendo los que están esperando)
+      const waitingCount = data.waitingPlayers?.length || 0;
+      const activePlayers = data.players.length - waitingCount;
+      
+      // Si todos los jugadores activos votaron, terminar la ronda automáticamente
+      if (data.votes.length === activePlayers && votingStarted && activePlayers > 0) {
+        console.log(`[GamePlay] All active players voted! Votes: ${data.votes.length}, Active players: ${activePlayers}`);
         setTimeout(() => {
           onTimerEnd();
         }, 500);

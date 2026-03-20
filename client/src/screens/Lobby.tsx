@@ -1,6 +1,7 @@
 import type { Room } from '../types';
 import Header from '../components/Header';
-import { Users, Copy, Crown, Play, Loader } from 'lucide-react';
+import { Users, Copy, Crown, Play, Loader, Wand2 } from 'lucide-react';
+import { socket } from '../socket';
 import React from 'react';
 
 interface LobbyProps {
@@ -12,12 +13,18 @@ interface LobbyProps {
 
 export default function Lobby({ room, isHost, onStartGame, onBack }: LobbyProps) {
   const [copied, setCopied] = React.useState(false);
+  const [transferringHost, setTransferringHost] = React.useState(false);
 
   const copyRoomLink = () => {
     const link = `${window.location.origin}?room=${room.id}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleTransferHost = (newHostId: string) => {
+    socket.emit('transfer-host', { roomId: room.id, newHostId });
+    setTransferringHost(false);
   };
 
   return (
@@ -40,19 +47,28 @@ export default function Lobby({ room, isHost, onStartGame, onBack }: LobbyProps)
           margin: '0 auto clamp(0.8rem, 1.2vw, 1rem)'
         }}>
           {room.players.map((player) => (
-            <div key={player.id} style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: player.isHost ? '2px solid var(--color-principal)' : '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 'clamp(12px, 2vw, 16px)',
-              padding: 'clamp(0.7rem, 1.5vw, 1rem)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative',
-              boxShadow: player.isHost ? '0 0 20px rgba(128, 22, 199, 0.3)' : 'none',
-              transition: 'all 0.3s'
-            }}>
+            <div 
+              key={player.id} 
+              onClick={() => {
+                if (transferringHost && isHost && !player.isHost) {
+                  handleTransferHost(player.id);
+                }
+              }}
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: player.isHost ? '2px solid var(--color-principal)' : transferringHost && isHost && !player.isHost ? '2px solid var(--color-principal)' : '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 'clamp(12px, 2vw, 16px)',
+                padding: 'clamp(0.7rem, 1.5vw, 1rem)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+                boxShadow: player.isHost ? '0 0 20px rgba(128, 22, 199, 0.3)' : transferringHost && isHost && !player.isHost ? '0 0 15px rgba(255, 215, 0, 0.3)' : 'none',
+                transition: 'all 0.3s',
+                cursor: transferringHost && isHost && !player.isHost ? 'pointer' : 'default',
+                opacity: transferringHost && !player.isHost && isHost ? 1 : transferringHost && isHost ? 0.5 : 1
+              }}>
               {player.isHost && (
                 <div style={{ position: 'absolute', top: 'clamp(-18px, -2vw, -12px)', background: '#1E1921', padding: 'clamp(1px, 0.3vw, 2px) clamp(6px, 1vw, 8px)', borderRadius: 'clamp(10px, 1.5vw, 12px)' }}>
                   <Crown size={16} color="#FFD700" fill="#FFD700" />
@@ -117,15 +133,43 @@ export default function Lobby({ room, isHost, onStartGame, onBack }: LobbyProps)
 
       <div style={{ marginTop: 'clamp(0.8rem, 1vw, 1.2rem)' }}>
         {isHost ? (
-          <button
-            type="button"
-            className="primary"
-            onClick={onStartGame}
-            disabled={room.players.length < 1}
-            style={{ width: '100%', padding: 'clamp(1rem, 2vw, 1.5rem)', fontSize: 'clamp(0.8rem, 2vw, 1rem)' }}
-          >
-            <Play size={24} fill="currentColor" /> CONFIGURAR PARTIDA
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.8rem, 1vw, 1rem)' }}>
+            {transferringHost && (
+              <div style={{ 
+                background: 'rgba(255, 215, 0, 0.1)', 
+                border: '1px solid rgba(255, 215, 0, 0.5)', 
+                borderRadius: 'clamp(10px, 1.5vw, 14px)',
+                padding: 'clamp(0.8rem, 1.2vw, 1rem)',
+                textAlign: 'center',
+                fontSize: 'clamp(0.7rem, 1.5vw, 0.9rem)'
+              }}>
+                Haz clic en un jugador para transferirle el anfitrión
+              </div>
+            )}
+            <button
+              type="button"
+              className="primary"
+              onClick={onStartGame}
+              disabled={room.players.length < 1}
+              style={{ width: '100%', padding: 'clamp(1rem, 2vw, 1.5rem)', fontSize: 'clamp(0.8rem, 2vw, 1rem)' }}
+            >
+              <Play size={24} fill="currentColor" /> CONFIGURAR PARTIDA
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setTransferringHost(!transferringHost)}
+              style={{ 
+                width: '100%', 
+                padding: 'clamp(0.6rem, 1.2vw, 0.9rem)', 
+                fontSize: 'clamp(0.7rem, 1.5vw, 0.85rem)',
+                background: transferringHost ? 'rgba(255, 215, 0, 0.2)' : undefined,
+                borderColor: transferringHost ? 'rgba(255, 215, 0, 0.5)' : undefined
+              }}
+            >
+              <Wand2 size={20} /> {transferringHost ? 'CANCELAR' : 'CEDER ANFITRIÓN'}
+            </button>
+          </div>
         ) : (
           <div className="card" style={{ background: 'rgba(128, 22, 199, 0.1)', border: '1px solid var(--color-principal)', marginTop: 'clamp(1rem, 2vw, 1.5rem)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(0.6rem, 1.5vw, 1rem)' }}>
