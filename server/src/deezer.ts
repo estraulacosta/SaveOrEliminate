@@ -44,6 +44,36 @@ function calculateMatchScore(requested: string, returned: string): number {
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 }
+
+function artistMatchesSelection(selectedArtist: string, actualArtist: string): boolean {
+  const selectedNormalized = normalizeName(selectedArtist);
+  const actualNormalized = normalizeName(actualArtist);
+
+  if (selectedNormalized === actualNormalized) {
+    return true;
+  }
+
+  const aliases = ARTIST_NAME_ALIASES[selectedArtist] || [];
+  if (aliases.some(alias => normalizeName(alias) === actualNormalized)) {
+    return true;
+  }
+
+  const reverseAliases = Object.entries(ARTIST_NAME_ALIASES).find(([, values]) =>
+    values.some(alias => normalizeName(alias) === selectedNormalized)
+  );
+
+  if (reverseAliases) {
+    const [canonicalName, canonicalAliases] = reverseAliases;
+    if (normalizeName(canonicalName) === actualNormalized) {
+      return true;
+    }
+    if (canonicalAliases.some(alias => normalizeName(alias) === actualNormalized)) {
+      return true;
+    }
+  }
+
+  return calculateMatchScore(selectedArtist, actualArtist) >= 0.95;
+}
 const trackYearCache = new Map<string, number | null>();
 
 const TITLE_BLOCKLIST = [
@@ -761,14 +791,22 @@ const yearPlaylistMap: Record<number, string> = {
 // Función para obtener TODAS las canciones de un artista desde TODOS sus álbumes
 // Con un pool de 150 canciones aleatorias, deduplicadas, filtradas y shuffled en cada partida
 /**
- * Obtiene canciones de un artista - HÍBRIDO: intenta top tracks primero,
- * si insuficientes, complementa con álbumes
+ * Obtiene canciones de un artista - primero muestrea álbumes,
+ * y solo usa top tracks como fallback si falta material.
  */
-async function getArtistTracksHybrid(artistId: number, limit: number = 75): Promise<Song[]> {
+async function getArtistTracksHybrid(artistId: number, artistName: string, limit: number = 75): Promise<Song[]> {
   try {
-    console.log(`\n  [HÍBRIDO] Intentando top tracks primero (limit: ${limit})...`);
-    
-    // Paso 1: Intenta obtener top tracks (1 petición HTTP)
+    console.log(`\n  [ÁLBUMES] Muestreando catálogo por álbum (limit: ${limit})...`);
+
+    const albumTracks = await getAllTracksFromArtistAlbums(artistId, artistName, Math.max(limit, 150));
+
+    if (albumTracks.length >= limit) {
+      console.log(`  ✓ RESULTADO: ${albumTracks.length} canciones desde álbumes`);
+      return albumTracks.slice(0, limit);
+    }
+
+    console.log(`  ⚠️ Álbumes insuficientes (${albumTracks.length} < ${limit}). Usando top tracks como respaldo...`);
+
     const topTracksResponse = await axios.get(`${DEEZER_API}/artist/${artistId}/top`, {
       params: { limit: Math.max(75, limit) }
     });
@@ -778,44 +816,29 @@ async function getArtistTracksHybrid(artistId: number, limit: number = 75): Prom
       for (const track of topTracksResponse.data.data) {
         if (!track.preview) continue;
         if (shouldRejectTitle(track.title)) continue;
+        if (!artistMatchesSelection(artistName, track.artist?.name || '')) continue;
 
         topTracks.push({
           id: track.id.toString(),
           name: track.title,
           artist: track.artist.name,
           previewUrl: track.preview,
-          albumArt: track.album?.cover_big || track.album?.cover_medium || '',
+          albumArt: track.album?.cover_big || track.album?.cover_medium || track.album?.cover || '',
           spotifyUrl: track.link || '',
           albumName: track.album?.title,
         });
       }
     }
-    
-    console.log(`  ✓ Top tracks: ${topTracks.length} válidas`);
-    
-    // Paso 2: Si hay suficientes, retornarlas (MODO RÁPIDO)
-    if (topTracks.length >= 50) {
-      console.log(`  ✓ SUFICIENTES (${topTracks.length} >= 50). Sin álbumes.`);
-      const shuffled = fisherYatesShuffle(topTracks);
-      return shuffled.slice(0, limit);
-    }
-    
-    // Paso 3: Si insuficientes, complementar con álbumes (MODO COMPLETO)
-    console.log(`  ⚠️ INSUFICIENTES (${topTracks.length} < 50). Complementando con álbumes...`);
-    const albumTracks = await getAllTracksFromArtistAlbums(artistId, limit);
-    
-    // Combinar y deduplicar
-    const combined = [...topTracks, ...albumTracks];
-    const deduped = dedupeByIdentity(combined);
-    const shuffled = fisherYatesShuffle(deduped);
-    
-    console.log(`  ✓ RESULTADO: ${shuffled.length} canciones (top+álbumes)`);
+
+    const combined = dedupeByIdentity([...albumTracks, ...topTracks]);
+    const shuffled = fisherYatesShuffle(combined);
+
+    console.log(`  ✓ RESULTADO: ${shuffled.length} canciones (álbumes + fallback)`);
     return shuffled.slice(0, limit);
     
   } catch (error) {
     console.error('  Error in getArtistTracksHybrid:', error);
-    // En caso de error, intentar álbumes como fallback
-    return await getAllTracksFromArtistAlbums(artistId, limit);
+    return await getAllTracksFromArtistAlbums(artistId, artistName, limit);
   }
 }
 
@@ -831,7 +854,7 @@ function fisherYatesShuffle<T>(array: T[]): T[] {
   return result;
 }
 
-async function getAllTracksFromArtistAlbums(artistId: number, limit: number = 50, isHybridBackup: boolean = false): Promise<Song[]> {
+async function getAllTracksFromArtistAlbums(artistId: number, artistName: string, limit: number = 50, isHybridBackup: boolean = false): Promise<Song[]> {
   try {
     console.log(`\n=== NUEVA PARTIDA - Artist ID: ${artistId} ===`);
     
@@ -848,8 +871,11 @@ async function getAllTracksFromArtistAlbums(artistId: number, limit: number = 50
     const albums = albumsResponse.data.data;
     console.log(`✓ Found ${albums.length} albums for artist`);
 
-    // Paso 2: Obtener TODAS las canciones de TODOS los álbumes
+    // Paso 2: Tomar una muestra pequeña de cada álbum para cubrir más catálogo.
     const allCandidates: Song[] = [];
+    const songsPerAlbum = Math.max(1, Math.min(3, Math.ceil(limit / Math.max(albums.length, 1))));
+    console.log(`✓ Sampling up to ${songsPerAlbum} songs per album`);
+
     const albumFetchPromises = albums.map(async (album: any) => {
       try {
         const tracksResponse = await axios.get(`${DEEZER_API}/album/${album.id}/tracks`, {
@@ -857,11 +883,11 @@ async function getAllTracksFromArtistAlbums(artistId: number, limit: number = 50
         });
 
         if (tracksResponse.data.data) {
-          for (const track of tracksResponse.data.data) {
-            if (!track.preview) continue; // Solo con preview
-            if (shouldRejectTitle(track.title)) continue; // Filtrar remixes, covers, etc.
-
-            allCandidates.push({
+          const albumTracks = tracksResponse.data.data
+            .filter((track: any) => track.preview)
+            .filter((track: any) => !shouldRejectTitle(track.title))
+            .filter((track: any) => artistMatchesSelection(artistName, track.artist?.name || ''))
+            .map((track: any) => ({
               id: track.id.toString(),
               name: track.title,
               artist: track.artist.name,
@@ -869,8 +895,10 @@ async function getAllTracksFromArtistAlbums(artistId: number, limit: number = 50
               albumArt: album?.cover_big || album?.cover_medium || album?.cover || track.album?.cover_big || '',
               spotifyUrl: track.link || '',
               albumName: album?.title,
-            });
-          }
+            }));
+
+          const shuffledAlbumTracks:Song[] = fisherYatesShuffle(albumTracks);
+          allCandidates.push(...shuffledAlbumTracks.slice(0, songsPerAlbum));
         }
       } catch (e) {
         console.error(`Error fetching album ${album.id}:`, e);
@@ -885,8 +913,8 @@ async function getAllTracksFromArtistAlbums(artistId: number, limit: number = 50
       return [];
     }
 
-    // Paso 3: Seleccionar 150 canciones ALEATORIAS del pool completo
-    const poolSize = Math.min(150, allCandidates.length);
+    // Paso 3: Seleccionar un pool aleatorio amplio del catálogo completo
+    const poolSize = Math.min(Math.max(150, limit), allCandidates.length);
     const pool: Song[] = [];
     const usedIndices = new Set<number>();
 
@@ -1001,30 +1029,16 @@ export async function searchByArtist(artistName: string, limit: number = 50): Pr
 
     console.log(`[searchByArtist] ✓ Best match: "${bestArtist.name}" (followers: ${bestArtist.nb_fan || 0}, score: ${bestScore.toFixed(2)})`);
 
-    // Obtener TOP TRACKS directamente
-    const topTracksUrl = `${DEEZER_API}/artist/${bestArtist.id}/top?limit=${limit}`;
-    const tracksResponse = await axios.get(topTracksUrl);
-    
-    if (!tracksResponse.data.data || tracksResponse.data.data.length === 0) {
+    // Obtener un pool más amplio: top tracks + canciones de álbumes.
+    // Esto evita que el juego se quede siempre en el mismo top 50.
+    const songs = await getArtistTracksHybrid(bestArtist.id, bestArtist.name, limit);
+
+    if (!songs.length) {
       console.log(`[searchByArtist] ❌ No tracks found for: ${bestArtist.name}`);
       return [];
     }
 
-    // Convertir a formato Song - sin filtros adicionales
-    const songs: Song[] = tracksResponse.data.data
-      .map((track: any) => ({
-        id: track.id.toString(),
-        name: track.title,
-        artist: track.artist.name,
-        previewUrl: track.preview || null,
-        albumArt: track.album?.cover_medium || track.album?.cover_big || '',
-        spotifyUrl: '',
-        releaseYear: extractYearFromDate(track.release_date),
-        albumName: track.album?.title
-      }))
-      .filter((song: Song) => song.previewUrl !== null && song.previewUrl.trim() !== '');
-
-    console.log(`[searchByArtist] ✓ Got ${songs.length} tracks from "${bestArtist.name}"`);
+    console.log(`[searchByArtist] ✓ Got ${songs.length} tracks from "${bestArtist.name}" using hybrid catalog`);
     return songs;
   } catch (error) {
     console.error('Error in searchByArtist:', error);
@@ -1052,7 +1066,7 @@ export async function searchByGenre(genre: string, limit: number = 2000): Promis
     }
 
     console.log(`✓ Found ${genreArtists.length} artists for ${genre}`);
-    const artistsToUse = genreArtists.slice(0, MAX_ARTISTS_PER_GENRE);
+    const artistsToUse = fisherYatesShuffle([...genreArtists]).slice(0, MAX_ARTISTS_PER_GENRE);
     console.log(`Using ${artistsToUse.length} artists (max: ${MAX_ARTISTS_PER_GENRE})`);
 
     let allTracks: Song[] = [];
@@ -1103,39 +1117,24 @@ export async function searchByGenre(genre: string, limit: number = 2000): Promis
         console.log(`✓ ${artistName} → matched to "${bestArtist.name}" (followers: ${bestArtist.nb_fan || 0})`);
         successfulArtistsCount++;
 
-        // Obtener TOP TRACKS directamente
         const remainingSlots = limit - allTracks.length;
         const artistsRemaining = artistsToUse.length - artistsToUse.indexOf(artistName);
         const tracksPerArtist = Math.ceil(remainingSlots / Math.max(1, artistsRemaining));
-        
-        const topTracksUrl = `${DEEZER_API}/artist/${bestArtist.id}/top?limit=${tracksPerArtist}`;
-        const tracksResponse = await axios.get(topTracksUrl);
-        
-        if (!tracksResponse.data.data || tracksResponse.data.data.length === 0) {
+
+        const artistTracks = await getArtistTracksHybrid(bestArtist.id, bestArtist.name, tracksPerArtist);
+
+        if (!artistTracks.length) {
           console.log(`  No tracks for: ${bestArtist.name}`);
           continue;
         }
 
-        // Convertir a formato Song
         let addedCount = 0;
-        for (const track of tracksResponse.data.data) {
+        for (const track of artistTracks) {
           if (allTracks.length >= limit) break;
-          if (!track.preview || track.preview.trim() === '') continue;
-          
           const songId = track.id.toString();
           if (seen.has(songId)) continue;
-          
-          const song: Song = {
-            id: songId,
-            name: track.title,
-            artist: track.artist.name,
-            previewUrl: track.preview,
-            albumArt: track.album?.cover_medium || track.album?.cover_big || '',
-            spotifyUrl: '',
-            releaseYear: extractYearFromDate(track.release_date),
-            albumName: track.album?.title
-          };
-          
+
+          const song: Song = track;
           seen.add(songId);
           allTracks.push(song);
           addedCount++;
@@ -1231,43 +1230,24 @@ export async function searchGenreForVersus(genre: string, songCount: number = 20
           continue;
         }
 
-        // Get top 10 tracks directly from API
-        const tracksResponse = await axios.get(`${DEEZER_API}/artist/${bestArtist.id}/top?limit=10`);
-        
-        if (!tracksResponse.data.data || tracksResponse.data.data.length === 0) {
+        const artistTracks = await getArtistTracksHybrid(bestArtist.id, bestArtist.name, 10);
+
+        if (!artistTracks.length) {
           console.warn(`[VERSUS MODE] ✗ No tracks for artist: ${bestArtist.name}`);
           continue;
         }
 
-        // Get valid tracks (with preview URLs)
-        const validTracks = tracksResponse.data.data.filter((t: any) => t.preview && t.preview.trim() !== '');
-        
-        if (validTracks.length === 0) {
-          console.warn(`[VERSUS MODE] ✗ No tracks with preview for artist: ${bestArtist.name}`);
-          continue;
-        }
-
-        // Randomly select 1 from the top tracks
-        const randomTrackData = validTracks[Math.floor(Math.random() * validTracks.length)];
+        // Randomly select 1 from the hybrid artist pool
+        const randomTrackData = artistTracks[Math.floor(Math.random() * artistTracks.length)];
         
         // Check for duplicates using song ID
         const trackId = randomTrackData.id.toString();
         if (seen.has(trackId)) {
-          console.log(`[VERSUS MODE] ⊘ Skipped duplicate: ${bestArtist.name} - ${randomTrackData.title}`);
+          console.log(`[VERSUS MODE] ⊘ Skipped duplicate: ${bestArtist.name} - ${randomTrackData.name}`);
           continue;
         }
 
-        // Convert to Song format
-        const song: Song = {
-          id: trackId,
-          name: randomTrackData.title,
-          artist: randomTrackData.artist.name,
-          previewUrl: randomTrackData.preview,
-          albumArt: randomTrackData.album?.cover_medium || randomTrackData.album?.cover_big || '',
-          spotifyUrl: '',
-          releaseYear: extractYearFromDate(randomTrackData.release_date),
-          albumName: randomTrackData.album?.title
-        };
+        const song: Song = randomTrackData;
         
         seen.add(trackId);
         versusSongs.push(song);
@@ -1326,11 +1306,7 @@ export async function searchByYear(year: number, limit: number = 100): Promise<S
           name: track.title,
           artist: track.artist.name,
           previewUrl: track.preview,
-          albumArt:
-            track.album?.cover_big ||
-            track.album?.cover_medium ||
-            track.album?.cover ||
-            '',
+          albumArt: track.album?.cover_big || track.album?.cover_medium || track.album?.cover || '',
           spotifyUrl: track.link,
         }));
 
@@ -1422,7 +1398,7 @@ export async function getTopTracks(limit: number = 20): Promise<Song[]> {
         name: track.title,
         artist: track.artist.name,
         previewUrl: track.preview,
-        albumArt: track.album.cover_big || track.album.cover_medium || track.album.cover,
+        albumArt: track.album?.cover_big || track.album?.cover_medium || track.album?.cover || '',
         spotifyUrl: track.link,
       }));
 
